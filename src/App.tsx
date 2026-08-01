@@ -1,33 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './services/supabaseClient';
-import { Navbar } from './components/common/Navbar';
 import { LoginForm } from './components/Auth/LoginForm';
 import { OnboardingWizard } from './components/Onboarding/OnboardingWizard';
-import { Dashboard } from './components/Dashboard/Dashboard';
-import { NutritionCard } from './components/Nutrition/NutritionCard';
+import { HomeDashboard } from './components/Home/HomeDashboard';
+import { BottomNav, NavTab } from './components/Home/BottomNav';
 import { MealInput } from './components/Nutrition/MealInput';
-import { WorkoutCard } from './components/Workout/WorkoutCard';
-import { WorkoutHistoryView } from './components/Workout/WorkoutHistoryView';
-import { ProgressionCard } from './components/Workout/ProgressionCard';
-import { ProfileSettings } from './components/Profile/ProfileSettings';
-import { Profile, NutritionLog, WeightLog, UserWorkout, UserWorkoutExercise, WorkoutLog } from './types/database.types';
+import { Profile, NutritionLog } from './types/database.types';
 import { getOrCreateTodayNutritionLog, saveMealEntry } from './services/nutritionService';
-import { logWorkoutSession } from './services/workoutService';
-import { getUserWeightHistory, logUserWeight } from './services/weightService';
+import './components/Home/home.css';
 
 export const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'workout' | 'nutrition' | 'profile'>('dashboard');
+  const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Application Data States
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayNutrition, setTodayNutrition] = useState<NutritionLog | null>(null);
-  const [userWorkout, setUserWorkout] = useState<UserWorkout | null>(null);
-  const [workoutExercises, setWorkoutExercises] = useState<UserWorkoutExercise[]>([]);
-  const [workoutHistoryLogs, setWorkoutHistoryLogs] = useState<WorkoutLog[]>([]);
-  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -50,30 +40,17 @@ export const App: React.FC = () => {
   const fetchUserData = async (userId: string) => {
     setLoading(true);
     try {
-      // 1. Fetch Profile
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       setProfile(prof);
 
-      if (prof && prof.onboarding_completed) {
-        // 2. Fetch Today Nutrition
-        const nutLog = await getOrCreateTodayNutritionLog(userId);
-        setTodayNutrition(nutLog);
-
-        // 3. Fetch User Workout Routine
-        await refreshUserWorkout(userId);
-
-        // 4. Fetch Workout Logs History
-        const { data: pastLogs } = await supabase
-          .from('workout_logs')
-          .select('*, workout_log_sets(*, exercises(*))')
-          .eq('user_id', userId)
-          .order('logged_at', { ascending: false });
-
-        setWorkoutHistoryLogs(pastLogs || []);
-
-        // 5. Fetch Weight Logs
-        const weights = await getUserWeightHistory(userId);
-        setWeightLogs(weights);
+      // Fetch today's nutrition log (even for skipped users, so the tracker works)
+      if (prof) {
+        try {
+          const nutLog = await getOrCreateTodayNutritionLog(userId);
+          setTodayNutrition(nutLog);
+        } catch (e) {
+          console.warn('Could not fetch nutrition log:', e);
+        }
       }
     } catch (err) {
       console.error('Fetch User Data Error:', err);
@@ -82,19 +59,7 @@ export const App: React.FC = () => {
     }
   };
 
-  const refreshUserWorkout = async (userId: string) => {
-    const { data: uWorkout } = await supabase
-      .from('user_workouts')
-      .select('*, user_workout_exercises(*, exercises(*))')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (uWorkout) {
-      setUserWorkout(uWorkout);
-      setWorkoutExercises(uWorkout.user_workout_exercises || []);
-    }
-  };
-
+  /* ── Meal saving (existing MealInput integration) ── */
   const handleSaveMeal = async (
     rawText: string,
     foods: any[],
@@ -103,38 +68,24 @@ export const App: React.FC = () => {
     if (!session) return;
     const log = todayNutrition || (await getOrCreateTodayNutritionLog(session.user.id));
     await saveMealEntry(log.id, rawText, foods, totals);
-    // Refresh nutrition log
     const updated = await getOrCreateTodayNutritionLog(session.user.id);
     setTodayNutrition(updated);
+    // Return to home after saving so user sees updated rings
+    setActiveTab('home');
   };
 
-  const handleSaveWorkout = async (notes: string, completedSets: any[]) => {
-    if (!session || !userWorkout) return;
-    await logWorkoutSession(session.user.id, userWorkout.id, notes, completedSets);
-    // Refresh workout history
-    fetchUserData(session.user.id);
-  };
-
-  const handleLogNewWeight = async (weightKg: number) => {
-    if (!session) return;
-    await logUserWeight(session.user.id, weightKg);
-    const updatedWeights = await getUserWeightHistory(session.user.id);
-    setWeightLogs(updatedWeights);
-    if (profile) setProfile({ ...profile, weight_kg: weightKg });
-  };
-
-  /* ── Skip onboarding: redirect to home with incomplete profile ── */
+  /* ── Skip onboarding ── */
   const handleSkipOnboarding = () => {
     setShowOnboarding(false);
-    // Re-fetch to get the newly-created minimal profile
     if (session) fetchUserData(session.user.id);
   };
 
-  /* ── Open onboarding from banner ── */
+  /* ── Resume onboarding from banner ── */
   const handleResumeOnboarding = () => {
     setShowOnboarding(true);
   };
 
+  /* ── Loading state ── */
   if (loading) {
     return (
       <div style={{
@@ -146,97 +97,245 @@ export const App: React.FC = () => {
     );
   }
 
-  // 1. Not Authenticated
+  /* ── 1. Not Authenticated ── */
   if (!session) {
-    return <LoginForm onSuccess={() => fetchUserData(session?.user?.id)} />;
+    return <LoginForm onSuccess={() => { /* auth state change will handle */ }} />;
   }
 
-  // 2. Show onboarding (first time or resumed from banner)
-  if (!profile || showOnboarding || !profile.onboarding_completed) {
-    // If user previously skipped and explicitly clicked "Complete onboarding", or first-time user
-    if (!profile || !profile.onboarding_completed || showOnboarding) {
-      return (
-        <OnboardingWizard
-          userId={session.user.id}
-          onComplete={() => {
-            setShowOnboarding(false);
-            fetchUserData(session.user.id);
-          }}
-          onSkip={handleSkipOnboarding}
-        />
-      );
-    }
-  }
-
-  // 3. Authenticated & Onboarding Complete -> Main Application
-  return (
-    <div className="min-h-screen pb-12 bg-zinc-950 text-zinc-100">
-      <Navbar
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        userEmail={session.user.email}
-        onSignOut={() => supabase.auth.signOut()}
+  /* ── 2. Onboarding ── */
+  // Show wizard ONLY when: (a) no profile exists yet, or (b) user explicitly clicked "resume"
+  if (!profile || showOnboarding) {
+    return (
+      <OnboardingWizard
+        userId={session.user.id}
+        onComplete={() => {
+          setShowOnboarding(false);
+          fetchUserData(session.user.id);
+        }}
+        onSkip={handleSkipOnboarding}
       />
+    );
+  }
 
-      <main className="pt-4">
-        {activeTab === 'dashboard' && (
-          <Dashboard
-            profile={profile}
-            todayNutrition={todayNutrition}
-            userWorkout={userWorkout}
-            exerciseCount={workoutExercises.length}
-            weightLogs={weightLogs}
-            onOpenNutritionTab={() => setActiveTab('nutrition')}
-            onOpenWorkoutTab={() => setActiveTab('workout')}
-            onLogNewWeight={handleLogNewWeight}
-            onResumeOnboarding={!profile.onboarding_completed ? handleResumeOnboarding : undefined}
-          />
-        )}
+  /* ── 3. Main Application ── */
+  return (
+    <div className="hd-page">
+      {/* Home Dashboard */}
+      {activeTab === 'home' && profile && (
+        <HomeDashboard
+          profile={profile}
+          todayNutrition={todayNutrition}
+          onResumeOnboarding={!profile.onboarding_completed ? handleResumeOnboarding : undefined}
+          onNavigateSettings={() => setActiveTab('settings')}
+        />
+      )}
 
-        {activeTab === 'nutrition' && (
-          <div className="max-w-3xl mx-auto space-y-6 px-4 py-4">
-            <h2 className="text-xl font-bold text-zinc-100">Nutrition Tracker</h2>
-            <NutritionCard
-              currentCalories={todayNutrition?.total_calories || 0}
-              targetCalories={profile.target_calories || 2000}
-              currentProtein={todayNutrition?.total_protein || 0}
-              targetProtein={profile.target_protein || 120}
-              currentCarbs={todayNutrition?.total_carbs || 0}
-              targetCarbs={profile.target_carbs || 250}
-              currentFat={todayNutrition?.total_fat || 0}
-              targetFat={profile.target_fat || 55}
-            />
-            <div className="card-surface">
+      {/* Log Meal page — shows the existing MealInput with Gemini integration */}
+      {activeTab === 'meal' && profile && (
+        <div className="hd-page" style={{ paddingTop: 0 }}>
+          {/* Back button to home */}
+          <div style={{ maxWidth: 520, margin: '0 auto', padding: '20px 24px 0' }}>
+            <button
+              onClick={() => setActiveTab('home')}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 500,
+                color: '#6B7280', padding: 0, marginBottom: 16,
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
+          </div>
+
+          {/* Nutrition Summary */}
+          <div style={{ maxWidth: 520, margin: '0 auto', padding: '0 24px' }}>
+            <div className="hd-card" style={{ marginBottom: 20 }}>
+              <h2 className="hd-card-title" style={{ marginBottom: 12 }}>Nutrition Tracker</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1F2937' }}>
+                    {todayNutrition?.total_calories || 0}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500 }}>
+                    / {profile.target_calories || 2000} kcal
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1F2937' }}>
+                    {todayNutrition?.total_protein || 0}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500 }}>
+                    / {profile.target_protein || 120} g P
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1F2937' }}>
+                    {todayNutrition?.total_carbs || 0}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500 }}>
+                    / {profile.target_carbs || 250} g C
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1F2937' }}>
+                    {todayNutrition?.total_fat || 0}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 500 }}>
+                    / {profile.target_fat || 55} g F
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Existing MealInput with Gemini integration */}
+          <div style={{ maxWidth: 520, margin: '0 auto', padding: '0 24px 100px' }}>
+            <div className="hd-card">
+              <h2 className="hd-card-title">+ Log Meal</h2>
+              <p className="hd-card-subtitle" style={{ marginBottom: 16 }}>
+                Describe your meal in natural language
+              </p>
               <MealInput onSaveMeal={handleSaveMeal} />
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {activeTab === 'workout' && (
-          <div className="max-w-3xl mx-auto space-y-6 px-4 py-4">
-            <h2 className="text-xl font-bold text-zinc-100">Workout Routine & Logging</h2>
-            {userWorkout && (
-              <WorkoutCard
-                workout={userWorkout}
-                exercises={workoutExercises}
-                onSaveWorkout={handleSaveWorkout}
-                onRefreshWorkout={() => refreshUserWorkout(session.user.id)}
-              />
-            )}
-            <ProgressionCard exercises={workoutExercises} userId={session.user.id} />
-            <WorkoutHistoryView logs={workoutHistoryLogs} />
+      {/* Workout placeholder */}
+      {activeTab === 'workout' && (
+        <div className="hd-placeholder-page">
+          <div className="hd-placeholder-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 12h12M4 8v8M20 8v8M2 10v4M22 10v4" />
+            </svg>
           </div>
-        )}
+          <h2 className="hd-placeholder-title">Today's Workout</h2>
+          <p className="hd-placeholder-subtitle">
+            Your personalized workout routine will appear here.
+            <br />Coming soon.
+          </p>
+        </div>
+      )}
 
-        {activeTab === 'profile' && (
-          <ProfileSettings
-            profile={profile}
-            userEmail={session.user.email}
-            onProfileUpdated={() => fetchUserData(session.user.id)}
-            onSignOut={() => supabase.auth.signOut()}
-          />
-        )}
-      </main>
+      {/* Settings */}
+      {activeTab === 'settings' && profile && (
+        <div style={{ maxWidth: 520, margin: '0 auto', padding: '20px 24px 100px' }}>
+          {/* Back button */}
+          <button
+            onClick={() => setActiveTab('home')}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontFamily: "'Inter', sans-serif", fontSize: 14, fontWeight: 500,
+              color: '#6B7280', padding: 0, marginBottom: 20,
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+
+          <h2 style={{
+            fontSize: 22, fontWeight: 700, color: '#1F2937',
+            fontFamily: "'Inter', sans-serif", margin: '0 0 24px',
+          }}>
+            Settings
+          </h2>
+
+          {/* Profile summary */}
+          <div className="hd-card" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: '50%', background: '#F3F4F6',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20, fontWeight: 600, color: '#5C8D89',
+              }}>
+                {(profile.display_name || 'U')[0].toUpperCase()}
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1F2937' }}>
+                  {profile.display_name || 'FitBee User'}
+                </p>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
+                  {session.user.email}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Settings items */}
+          <div className="hd-card">
+            <div
+              className="hd-settings-item"
+              onClick={!profile.onboarding_completed ? handleResumeOnboarding : undefined}
+              style={!profile.onboarding_completed ? {} : { cursor: 'default', opacity: 0.5 }}
+            >
+              <div className="hd-settings-item-left">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C8D89" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <div>
+                  <p className="hd-settings-item-label">Profile & Onboarding</p>
+                  <p className="hd-settings-item-desc">
+                    {profile.onboarding_completed ? 'Completed' : 'Tap to complete your profile'}
+                  </p>
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </div>
+
+            <div className="hd-settings-item" style={{ cursor: 'default', opacity: 0.5 }}>
+              <div className="hd-settings-item-left">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C8D89" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+                <div>
+                  <p className="hd-settings-item-label">Notifications</p>
+                  <p className="hd-settings-item-desc">Coming soon</p>
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </div>
+
+            <div className="hd-settings-item" style={{ borderBottom: 'none', cursor: 'default', opacity: 0.5 }}>
+              <div className="hd-settings-item-left">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C8D89" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <div>
+                  <p className="hd-settings-item-label">Privacy & Data</p>
+                  <p className="hd-settings-item-desc">Coming soon</p>
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Sign Out */}
+          <button
+            className="hd-signout-btn"
+            onClick={() => supabase.auth.signOut()}
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
+
+      {/* Bottom Navigation */}
+      <BottomNav activeTab={activeTab} onSelectTab={setActiveTab} />
     </div>
   );
 };

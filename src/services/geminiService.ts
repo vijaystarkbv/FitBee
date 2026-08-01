@@ -56,82 +56,163 @@ async function generateContent(
 
 /**
  * 1. Initial User Target Estimation during Onboarding
+ *
+ * Uses FitBee health rules:
+ *   - Weight Loss: ~0.5 kg/week (~2 kg/month)
+ *   - Muscle Gain: ~1.3 kg/month lean gain
+ *   - Maintain: maintain body weight, balanced nutrition
+ *   - Improve Fitness: maintain body weight, prioritize recovery & performance
  */
 export async function estimateUserTargets(
   onboardingData: OnboardingFormState
 ): Promise<GeminiMacroEstimationResponse> {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
+  // ── Build equipment string ──
+  const equipmentList = (onboardingData.equipment || []).length > 0
+    ? onboardingData.equipment.join(', ')
+    : 'None';
+
+  const equipmentDetailsStr = Object.entries(onboardingData.equipmentDetails || {})
+    .map(([name, detail]) => {
+      const parts: string[] = [name];
+      if (detail?.max_weight_kg) parts.push(`max ${detail.max_weight_kg}kg`);
+      if (detail?.resistance_level) parts.push(`resistance: ${detail.resistance_level}`);
+      return parts.join(' ');
+    })
+    .join('; ') || 'N/A';
+
+  // ── Fallback: deterministic Mifflin-St Jeor calculation ──
   if (!apiKey || apiKey.includes('placeholder')) {
-    console.warn('FitBee: VITE_GEMINI_API_KEY is missing/placeholder. Using deterministic macro estimation.');
-    const goalStr = onboardingData.goal as string;
-    const isGain = goalStr === 'gain_muscle' || goalStr === 'gain_weight';
-    const baseCal = onboardingData.weight_kg * (isGain ? 35 : 26);
-    return {
-      calories: Math.round(baseCal),
-      protein: Math.round(onboardingData.weight_kg * 2.0),
-      carbs: Math.round((baseCal * 0.45) / 4),
-      fat: Math.round((baseCal * 0.25) / 9),
-      recommended_template_name: (onboardingData.training_location === 'home' || onboardingData.training_location === 'both')
-        ? (onboardingData.has_dumbbells ? 'Home Dumbbell Split' : 'Home Bodyweight Basics')
-        : 'Gym Foundation',
-    };
+    console.warn('FitBee: VITE_GEMINI_API_KEY missing. Using deterministic macro estimation.');
+    return deterministicEstimate(onboardingData);
   }
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
 
     const goalDescriptions: Record<string, string> = {
-      gain_muscle: 'Weight Gain / Muscle Building',
-      lose_fat: 'Fat Loss',
-      maintain_weight: 'Maintain Current Weight',
-      improve_fitness: 'Improve General Fitness',
-      gain_weight: 'Weight Gain / Muscle Building',
-      lose_weight: 'Fat Loss',
+      gain_muscle: 'Lean Muscle Gain — target approximately 1.3 kg per month of lean muscle while minimizing fat gain',
+      lose_fat: 'Fat Loss — target approximately 0.5 kg per week of weight loss (about 2 kg per month)',
+      maintain_weight: 'Maintain Weight — maintain current body weight with balanced, optimized nutrition',
+      improve_fitness: 'Improve Fitness — maintain body weight while prioritizing recovery and athletic performance',
     };
-    const goalText = goalDescriptions[onboardingData.goal] || onboardingData.goal;
+    const goalText = goalDescriptions[onboardingData.goal as string] || onboardingData.goal;
 
     const prompt = `
-You are a precision fitness and nutrition calculator.
-Calculate daily nutrition targets and recommend an initial beginner workout template.
+You are FitBee's precision nutrition calculator.
+Calculate daily nutrition targets strictly following FitBee's health rules.
 
-User Profile:
-- Age: ${onboardingData.age}
+FITBEE HEALTH RULES (MANDATORY — do NOT override these):
+- Weight Loss goal: Target 0.5 kg weight loss per week (approximately 2 kg per month). Calculate caloric deficit accordingly.
+- Muscle Gain goal: Target approximately 1.3 kg lean muscle gain per month. Calculate caloric surplus accordingly while minimizing unnecessary fat gain.
+- Maintain Weight goal: Maintain current body weight. Optimize for balanced nutrition.
+- Improve Fitness goal: Maintain current body weight. Prioritize recovery and athletic performance nutrition.
+
+Use the Mifflin-St Jeor equation for BMR, then apply the appropriate activity multiplier for TDEE.
+Apply the goal-specific adjustment to TDEE to arrive at daily calories.
+Calculate protein at 1.8-2.2g per kg bodyweight.
+Calculate fat at 0.8-1.0g per kg bodyweight.
+Fill remaining calories with carbohydrates.
+
+USER PROFILE:
+- Age: ${onboardingData.age} years
 - Gender: ${onboardingData.gender}
 - Height: ${onboardingData.height_cm} cm
-- Weight: ${onboardingData.weight_kg} kg
+- Current Weight: ${onboardingData.weight_kg} kg
+- Target Weight: ${onboardingData.target_weight_kg || onboardingData.weight_kg} kg
 - Goal: ${goalText}
-- Activity Level: ${onboardingData.activity_level}
+- Activity Level: ${onboardingData.activity_level} (sedentary / light / moderate / active)
 - Training Location: ${onboardingData.training_location}
-- Has Dumbbells: ${onboardingData.has_dumbbells ? 'Yes' : 'No'}
-- Max Dumbbell Weight: ${onboardingData.max_dumbbell_weight_kg ?? 'N/A'} kg
+- Equipment Available: ${equipmentList}
+- Equipment Details: ${equipmentDetailsStr}
 
-Output JSON schema strictly matching:
+Return ONLY a JSON object with these exact keys:
 {
-  "calories": number,
-  "protein": number,
-  "carbs": number,
-  "fat": number,
-  "recommended_template_name": "Home Bodyweight Basics" | "Home Dumbbell Split" | "Gym Foundation"
+  "calories": <integer daily calories>,
+  "protein": <integer daily protein in grams>,
+  "carbs": <integer daily carbohydrates in grams>,
+  "fat": <integer daily fat in grams>
 }
+
+Do not include any other text. Return only the JSON object.
 `;
 
     const rawText = await generateContent(genAI, prompt);
     const cleanedText = cleanJsonResponseText(rawText);
-    const parsed: GeminiMacroEstimationResponse = JSON.parse(cleanedText);
-    return parsed;
+    const parsed = JSON.parse(cleanedText);
+
+    // Validate & normalize
+    return {
+      calories: Math.round(Number(parsed.calories) || 2000),
+      protein: Math.round(Number(parsed.protein) || 120),
+      carbs: Math.round(Number(parsed.carbs) || 250),
+      fat: Math.round(Number(parsed.fat) || 55),
+      recommended_template_name:
+        parsed.recommended_template_name ||
+        ((onboardingData.training_location === 'home' || onboardingData.training_location === 'both')
+          ? (onboardingData.has_dumbbells ? 'Home Dumbbell Split' : 'Home Bodyweight Basics')
+          : 'Gym Foundation'),
+    };
   } catch (error: any) {
     console.error('Gemini Target Estimation Error:', error);
-    let errMsg = 'Failed to estimate targets via Gemini API.';
-    if (error?.message?.includes('API_KEY_INVALID') || error?.status === 400) {
-      errMsg = 'Gemini Error: Invalid API Key provided in .env.local';
-    } else if (error?.status === 404 || error?.message?.includes('404')) {
-      errMsg = 'Gemini Error: Model gemini-flash-latest not found (404). Check model availability for your API key.';
-    } else if (error?.message) {
-      errMsg = `Gemini Error: ${error.message}`;
-    }
-    throw new Error(errMsg);
+
+    // On Gemini failure, fall back to deterministic calculation
+    console.warn('Falling back to deterministic macro estimation after Gemini error.');
+    return deterministicEstimate(onboardingData);
   }
+}
+
+/**
+ * Deterministic fallback using Mifflin-St Jeor + FitBee health rules.
+ */
+function deterministicEstimate(data: OnboardingFormState): GeminiMacroEstimationResponse {
+  const { weight_kg, goal, activity_level, gender, age, height_cm } = data;
+
+  // Mifflin-St Jeor BMR
+  let bmr: number;
+  if (gender === 'male') {
+    bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5;
+  } else {
+    bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age - 161;
+  }
+
+  const activityMultipliers: Record<string, number> = {
+    sedentary: 1.2,
+    light: 1.375,
+    moderate: 1.55,
+    active: 1.725,
+  };
+
+  let tdee = bmr * (activityMultipliers[activity_level] || 1.55);
+
+  // FitBee health rules
+  const goalStr = goal as string;
+  if (goalStr === 'lose_fat' || goalStr === 'lose_weight') {
+    // 0.5 kg/week = ~500 kcal/day deficit
+    tdee -= 500;
+  } else if (goalStr === 'gain_muscle' || goalStr === 'gain_weight') {
+    // ~1.3 kg/month lean gain = ~300 kcal/day surplus
+    tdee += 300;
+  }
+  // maintain_weight & improve_fitness: TDEE as-is
+
+  const calories = Math.max(Math.round(tdee), 1200);
+  const protein = Math.round(weight_kg * 2.0);
+  const fat = Math.round(weight_kg * 0.9);
+  const carbCalories = calories - protein * 4 - fat * 9;
+  const carbs = Math.max(Math.round(carbCalories / 4), 80);
+
+  return {
+    calories,
+    protein: Math.max(protein, 80),
+    carbs,
+    fat: Math.max(fat, 30),
+    recommended_template_name:
+      (data.training_location === 'home' || data.training_location === 'both')
+        ? (data.has_dumbbells ? 'Home Dumbbell Split' : 'Home Bodyweight Basics')
+        : 'Gym Foundation',
+  };
 }
 
 /**

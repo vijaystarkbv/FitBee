@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { OnboardingFormState, EquipmentDetail } from '../../types/fitness.types';
 import { supabase } from '../../services/supabaseClient';
 import { logUserWeight } from '../../services/weightService';
+import { estimateUserTargets } from '../../services/geminiService';
 import { WelcomeScreen } from './WelcomeScreen';
 import { NameScreen } from './NameScreen';
 import { AgeScreen } from './AgeScreen';
@@ -85,50 +86,12 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
     }));
   }, []);
 
-  /* ── Calculate macro targets (deterministic) ── */
-  const calculateTargets = (data: OnboardingFormState) => {
-    const { weight_kg, goal, activity_level, gender, age, height_cm } = data;
-
-    // Mifflin-St Jeor BMR
-    let bmr: number;
-    if (gender === 'male') {
-      bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5;
-    } else {
-      bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age - 161;
-    }
-
-    const activityMultipliers: Record<string, number> = {
-      sedentary: 1.2,
-      light: 1.375,
-      moderate: 1.55,
-      active: 1.725,
-    };
-
-    let tdee = bmr * (activityMultipliers[activity_level] || 1.55);
-
-    // Adjust for goal
-    if (goal === 'gain_muscle') tdee += 300;
-    else if (goal === 'lose_fat') tdee -= 400;
-    // maintain_weight and improve_fitness use TDEE as-is
-
-    const calories = Math.round(tdee);
-    const protein = Math.round(weight_kg * 2.0);
-    const fat = Math.round((calories * 0.25) / 9);
-    const carbs = Math.round((calories - protein * 4 - fat * 9) / 4);
-
-    return { calories, protein: Math.max(protein, 80), carbs: Math.max(carbs, 100), fat: Math.max(fat, 30) };
-  };
-
-  /* ── Save profile to Supabase ── */
+  /* ── Save profile to Supabase (with Gemini target calculation) ── */
   const handleFinish = async () => {
     setIsLoading(true);
     try {
-      const targets = calculateTargets(formData);
-
-      // Map goal for backward compatibility with existing DB constraint
-      let dbGoal: string = formData.goal;
-      if (dbGoal === 'gain_muscle') dbGoal = 'gain_muscle';
-      if (dbGoal === 'lose_fat') dbGoal = 'lose_fat';
+      // 1. Call Gemini to calculate nutrition targets using all onboarding data
+      const targets = await estimateUserTargets(formData);
 
       // Check if dumbbells are in equipment list
       const hasDumbbells = formData.equipment.some(
@@ -140,7 +103,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
            10)
         : null;
 
-      // 1. Upsert profile
+      // 2. Upsert profile with Gemini-calculated targets
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: userId,
         updated_at: new Date().toISOString(),
@@ -150,7 +113,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
         height_cm: formData.height_cm,
         weight_kg: formData.weight_kg,
         target_weight_kg: formData.target_weight_kg || formData.weight_kg,
-        goal: dbGoal,
+        goal: formData.goal,
         activity_level: formData.activity_level,
         training_location: formData.training_location,
         has_dumbbells: hasDumbbells,
@@ -166,12 +129,11 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ userId, onCo
 
       if (profileError) throw profileError;
 
-      // 2. Log initial weight
+      // 3. Log initial weight
       await logUserWeight(userId, formData.weight_kg);
 
-      // 3. Save equipment (if any)
+      // 4. Save equipment (if any)
       if (formData.equipment.length > 0) {
-        // Delete old equipment first (in case of re-onboarding)
         await supabase.from('user_equipment').delete().eq('user_id', userId);
 
         const equipmentRows = formData.equipment.map((name) => ({

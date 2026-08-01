@@ -1,0 +1,547 @@
+/* ───────────────────────────────────────────────
+   FitBee — Home Dashboard & Bottom Nav Styles
+   ─────────────────────────────────────────────── */
+
+:root {
+  --hd-bg: #FAFAF8;
+  --hd-card-bg: #FFFFFF;
+  --hd-primary: #5C8D89;
+  --hd-primary-hover: #4A7A76;
+  --hd-text: #1F2937;
+  --hd-text-secondary: #6B7280;
+  --hd-text-tertiary: #9CA3AF;
+  --hd-divider: #E8E8E6;
+  --hd-ring-progress: #5B9CFF;
+  --hd-ring-track: #F0F0EE;
+  --hd-success: #5E9F76;
+  --hd-font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --hd-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+  --hd-transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Page layout ── */
+.hd-page {
+  min-height: 100vh;
+  background: var(--hd-bg);
+  font-family: var(--hd-font);
+  padding-bottom: 90px; /* room for bottom nav */
+  position: relative;
+}
+
+/* ── Top bar ── */
+.hd-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.hd-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hd-logo-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--hd-primary), #89B0AE);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(92, 141, 137, 0.18);
+}
+
+.hd-logo-icon svg {
+  width: 18px;
+  height: 18px;
+  color: #FFFFFF;
+}
+
+.hd-logo-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--hd-text);
+  letter-spacing: -0.3px;
+}
+
+.hd-topbar-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #F3F4F6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--hd-transition);
+}
+
+.hd-topbar-avatar:hover {
+  background: #E8E8E6;
+}
+
+.hd-topbar-avatar svg {
+  width: 18px;
+  height: 18px;
+  color: var(--hd-text-secondary);
+}
+
+/* ── Greeting ── */
+.hd-greeting-section {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 28px 24px 0;
+  animation: hdFadeUp 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hd-greeting {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--hd-text-secondary);
+  margin: 0;
+}
+
+.hd-greeting-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--hd-text);
+  margin: 4px 0 0;
+  letter-spacing: -0.4px;
+}
+
+@keyframes hdFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Onboarding banner ── */
+.hd-onboarding-banner {
+  max-width: 520px;
+  margin: 20px auto 0;
+  padding: 0 24px;
+  animation: hdFadeUp 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 80ms;
+}
+
+.hd-onboarding-banner button {
+  width: 100%;
+  padding: 16px 20px;
+  border: 1.5px dashed var(--hd-primary);
+  border-radius: 20px;
+  background: rgba(92, 141, 137, 0.04);
+  color: var(--hd-primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--hd-font);
+  cursor: pointer;
+  transition: background-color var(--hd-transition), border-color var(--hd-transition);
+  text-align: center;
+}
+
+.hd-onboarding-banner button:hover {
+  background: rgba(92, 141, 137, 0.08);
+}
+
+/* ── Main nutrition card ── */
+.hd-nutrition-card {
+  max-width: 520px;
+  margin: 24px auto 0;
+  padding: 0 24px;
+  animation: hdSlideUp 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 120ms;
+}
+
+@keyframes hdSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hd-card {
+  background: var(--hd-card-bg);
+  border-radius: 24px;
+  box-shadow: var(--hd-card-shadow);
+  padding: 28px 24px;
+}
+
+.hd-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--hd-text);
+  margin: 0 0 4px;
+}
+
+.hd-card-subtitle {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--hd-text-tertiary);
+  margin: 0 0 24px;
+}
+
+/* ── Progress rings grid ── */
+.hd-rings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.hd-ring-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.hd-ring-svg-container {
+  position: relative;
+  width: 100px;
+  height: 100px;
+}
+
+.hd-ring-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.hd-ring-track {
+  fill: none;
+  stroke: var(--hd-ring-track);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.hd-ring-progress {
+  fill: none;
+  stroke: var(--hd-ring-progress);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hd-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.hd-ring-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--hd-text);
+  line-height: 1.1;
+}
+
+.hd-ring-goal {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--hd-text-tertiary);
+  margin-top: 1px;
+}
+
+.hd-ring-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hd-text-secondary);
+  text-align: center;
+}
+
+.hd-ring-unit {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--hd-text-tertiary);
+}
+
+/* ── Create plan card ── */
+.hd-plan-card {
+  max-width: 520px;
+  margin: 20px auto 0;
+  padding: 0 24px;
+  animation: hdSlideUp 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 200ms;
+}
+
+.hd-plan-card-inner {
+  background: var(--hd-card-bg);
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hd-plan-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hd-text);
+  margin: 0 0 4px;
+}
+
+.hd-plan-subtitle {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--hd-text-tertiary);
+  margin: 0;
+}
+
+.hd-plan-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 14px;
+  background: var(--hd-primary);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--hd-font);
+  cursor: pointer;
+  transition: background-color var(--hd-transition), transform var(--hd-transition);
+  white-space: nowrap;
+}
+
+.hd-plan-btn:hover {
+  background: var(--hd-primary-hover);
+  transform: translateY(-1px);
+}
+
+.hd-plan-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Bottom navigation ── */
+.hd-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--hd-card-bg);
+  border-top: 1px solid var(--hd-divider);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04);
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+.hd-bottom-nav-inner {
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+}
+
+.hd-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  font-family: var(--hd-font);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--hd-text-tertiary);
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 12px;
+  transition: color var(--hd-transition), background-color var(--hd-transition);
+  min-width: 60px;
+}
+
+.hd-nav-item:hover {
+  color: var(--hd-text-secondary);
+}
+
+.hd-nav-item.active {
+  color: var(--hd-primary);
+}
+
+.hd-nav-item svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Center FAB-style Log Meal button */
+.hd-nav-fab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  font-family: var(--hd-font);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--hd-primary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.hd-nav-fab-circle {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--hd-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(92, 141, 137, 0.3);
+  transition: transform var(--hd-transition), box-shadow var(--hd-transition), background-color var(--hd-transition);
+  margin-top: -14px;
+}
+
+.hd-nav-fab-circle:hover {
+  background: var(--hd-primary-hover);
+  transform: scale(1.06);
+  box-shadow: 0 8px 28px rgba(92, 141, 137, 0.35);
+}
+
+.hd-nav-fab-circle:active {
+  transform: scale(0.95);
+}
+
+.hd-nav-fab-circle svg {
+  width: 24px;
+  height: 24px;
+  color: #FFFFFF;
+}
+
+/* ── Placeholder pages ── */
+.hd-placeholder-page {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 60px 24px;
+  text-align: center;
+  animation: hdFadeUp 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hd-placeholder-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: #F3F4F6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+
+.hd-placeholder-icon svg {
+  width: 28px;
+  height: 28px;
+  color: var(--hd-text-tertiary);
+}
+
+.hd-placeholder-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--hd-text);
+  margin: 0 0 8px;
+}
+
+.hd-placeholder-subtitle {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--hd-text-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ── Settings page items ── */
+.hd-settings-list {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.hd-settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--hd-divider);
+  cursor: pointer;
+  transition: opacity var(--hd-transition);
+}
+
+.hd-settings-item:hover {
+  opacity: 0.7;
+}
+
+.hd-settings-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hd-settings-item-label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--hd-text);
+}
+
+.hd-settings-item-desc {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--hd-text-secondary);
+  margin-top: 2px;
+}
+
+.hd-settings-item svg {
+  width: 20px;
+  height: 20px;
+  color: var(--hd-text-tertiary);
+}
+
+/* ── Sign out ── */
+.hd-signout-btn {
+  width: 100%;
+  padding: 14px;
+  border: 1.5px solid #E8D5D5;
+  border-radius: 16px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--hd-font);
+  color: #C96A6A;
+  cursor: pointer;
+  margin-top: 24px;
+  transition: background-color var(--hd-transition);
+}
+
+.hd-signout-btn:hover {
+  background: rgba(201, 106, 106, 0.05);
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+  .hd-rings-grid {
+    gap: 18px;
+  }
+
+  .hd-ring-svg-container {
+    width: 85px;
+    height: 85px;
+  }
+
+  .hd-ring-value {
+    font-size: 14px;
+  }
+}
