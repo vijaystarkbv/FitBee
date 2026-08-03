@@ -106,6 +106,24 @@ export async function saveMealEntry(
 }
 
 /**
+ * Fetches all meal entries for a specific daily nutrition log
+ */
+export async function getTodayMeals(nutritionLogId: string): Promise<MealEntry[]> {
+  const { data, error } = await supabase
+    .from('meal_entries')
+    .select('*')
+    .eq('nutrition_log_id', nutritionLogId)
+    .order('created_at', { ascending: true }); // Oldest top, newest bottom
+
+  if (error) {
+    console.error('Error fetching today meals:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
  * Recalculates single food item macros when user edits quantity (ratio math)
  */
 export function recalculateFoodItemMacro(

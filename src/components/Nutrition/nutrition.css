@@ -1,0 +1,425 @@
+/* ───────────────────────────────────────────────
+   FitBee — Meal Logging & Nutrition Review Styles
+   Aligned with DESIGN_THEME.md
+   ─────────────────────────────────────────────── */
+
+:root {
+  --nut-bg: #FAFAF8;
+  --nut-card-bg: #FFFFFF;
+  --nut-primary: #5C8D89;
+  --nut-primary-hover: #4A7A76;
+  --nut-secondary: #89B0AE;
+  --nut-text: #1F2937;
+  --nut-text-secondary: #6B7280;
+  --nut-text-tertiary: #9CA3AF;
+  --nut-success: #5E9F76;
+  --nut-error: #C96A6A;
+  --nut-divider: #E8E8E6;
+  --nut-input-border: #E5E7EB;
+  --nut-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+  --nut-font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --nut-transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --nut-entrance-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Container ── */
+.nut-container {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0 24px 100px;
+  font-family: var(--nut-font);
+}
+
+/* ── Header ── */
+.nut-header {
+  padding: 20px 0 16px;
+}
+
+.nut-back-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--nut-font);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--nut-text-secondary);
+  padding: 0;
+  margin-bottom: 16px;
+  transition: color var(--nut-transition);
+}
+
+.nut-back-btn:hover {
+  color: var(--nut-text);
+}
+
+.nut-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--nut-text);
+  margin: 0 0 6px;
+  letter-spacing: -0.4px;
+}
+
+.nut-subtitle {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--nut-text-secondary);
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+/* ── Card base ── */
+.nut-card {
+  background: var(--nut-card-bg);
+  border-radius: 24px;
+  box-shadow: var(--nut-card-shadow);
+  padding: 24px;
+  margin-bottom: 20px;
+  transition: box-shadow var(--nut-transition), transform var(--nut-transition);
+}
+
+.nut-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--nut-text);
+  margin: 0 0 4px;
+}
+
+.nut-card-subtitle {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--nut-text-tertiary);
+  margin: 0 0 20px;
+}
+
+/* ── Input Textarea Styling (DESIGN_THEME.md match) ── */
+.nut-input-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--nut-text-secondary);
+  margin-bottom: 8px;
+}
+
+.nut-textarea {
+  width: 100%;
+  padding: 16px 20px;
+  font-size: 15px;
+  font-weight: 400;
+  font-family: var(--nut-font);
+  color: var(--nut-text);
+  background: #FFFFFF;
+  border: 1.5px solid var(--nut-input-border);
+  border-radius: 16px;
+  outline: none;
+  resize: none;
+  caret-color: var(--nut-primary);
+  transition: border-color var(--nut-transition), box-shadow var(--nut-transition);
+  line-height: 1.5;
+}
+
+.nut-textarea::placeholder {
+  color: var(--nut-text-secondary);
+}
+
+.nut-textarea:hover {
+  border-color: #D1D5DB;
+}
+
+.nut-textarea:focus {
+  border-color: var(--nut-primary);
+  box-shadow: 0 0 0 4px rgba(92, 141, 137, 0.15);
+}
+
+/* ── Parse Button Styling (DESIGN_THEME.md match) ── */
+.nut-parse-btn {
+  width: 100%;
+  height: 54px;
+  border-radius: 18px;
+  border: none;
+  background: var(--nut-primary);
+  color: #FFFFFF;
+  font-family: var(--nut-font);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(92, 141, 137, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color var(--nut-transition), transform var(--nut-transition), box-shadow var(--nut-transition), opacity var(--nut-transition);
+  position: relative;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.nut-parse-btn:hover:not(:disabled) {
+  background: var(--nut-primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(92, 141, 137, 0.3);
+}
+
+.nut-parse-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  box-shadow: 0 4px 12px rgba(92, 141, 137, 0.2);
+}
+
+.nut-parse-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.nut-error-banner {
+  background: rgba(201, 106, 106, 0.08);
+  border: 1px solid rgba(201, 106, 106, 0.25);
+  color: var(--nut-error);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 12px 16px;
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
+
+/* ── Entrance Animation ── */
+.nut-animate-entrance {
+  animation: nutSlideUpFade 500ms var(--nut-entrance-ease) both;
+}
+
+@keyframes nutSlideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Nutrient Review Rows ── */
+.nut-review-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.nut-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #FAFAF8;
+  border: 1px solid var(--nut-divider);
+  border-radius: 18px;
+  transition: background-color var(--nut-transition);
+}
+
+.nut-review-label-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.nut-review-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--nut-text);
+}
+
+.nut-review-unit {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--nut-text-tertiary);
+}
+
+/* Stepper Controls */
+.nut-stepper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nut-stepper-btn {
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--nut-divider);
+  background: #FFFFFF;
+  color: var(--nut-text);
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: transform var(--nut-transition), box-shadow var(--nut-transition), background-color var(--nut-transition), border-color var(--nut-transition);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nut-stepper-btn:hover:not(:disabled) {
+  background: #F3F4F6;
+  border-color: #D1D5DB;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.nut-stepper-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.nut-stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.nut-stepper-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--nut-text);
+  min-width: 64px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Save Button ── */
+.nut-save-btn {
+  width: 100%;
+  height: 54px;
+  border-radius: 18px;
+  border: none;
+  background: var(--nut-primary);
+  color: #FFFFFF;
+  font-family: var(--nut-font);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(92, 141, 137, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color var(--nut-transition), transform var(--nut-transition), box-shadow var(--nut-transition), color var(--nut-transition), border-color var(--nut-transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.nut-save-btn:hover:not(:disabled) {
+  background: var(--nut-primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(92, 141, 137, 0.32);
+}
+
+.nut-save-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  box-shadow: 0 4px 12px rgba(92, 141, 137, 0.2);
+}
+
+/* Saved Muted State */
+.nut-save-btn.saved,
+.nut-save-btn:disabled {
+  background: #F3F4F6;
+  color: var(--nut-success);
+  border: 1px solid #E5E7EB;
+  box-shadow: none;
+  cursor: default;
+  transform: none;
+}
+
+.nut-save-btn.saved .nut-save-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nut-success);
+  font-weight: 700;
+}
+
+/* ── Saved Meal History Cards ── */
+.nut-history-section {
+  margin-top: 32px;
+}
+
+.nut-history-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--nut-text);
+  margin: 0 0 16px;
+}
+
+.nut-meal-card {
+  background: var(--nut-card-bg);
+  border-radius: 24px;
+  box-shadow: var(--nut-card-shadow);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  border: 1px solid var(--nut-divider);
+  transition: transform var(--nut-transition);
+}
+
+.nut-meal-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.nut-meal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--nut-text);
+  margin: 0;
+}
+
+.nut-meal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(94, 159, 118, 0.1);
+  color: var(--nut-success);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.nut-meal-desc {
+  font-size: 13px;
+  color: var(--nut-text-secondary);
+  margin: 0 0 14px;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.nut-meal-macros {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 12px;
+  background: #FAFAF8;
+  border-radius: 14px;
+  text-align: center;
+}
+
+.nut-macro-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--nut-text);
+}
+
+.nut-macro-lbl {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--nut-text-tertiary);
+  margin-top: 2px;
+}
