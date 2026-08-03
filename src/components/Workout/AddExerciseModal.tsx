@@ -24,10 +24,17 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      supabase.from('exercises').select('*').order('name').then(({ data }) => {
+      supabase.from('master_exercises').select('*').order('exercise_name').then(({ data }) => {
         if (data && data.length > 0) {
-          setExercises(data);
-          setSelectedExerciseId(data[0].id);
+          const mapped: Exercise[] = data.map((d: any) => ({
+            id: d.id,
+            name: d.exercise_name || d.name,
+            category: d.exercise_category || d.category,
+            equipment_required: d.equipment_required,
+            created_at: d.created_at
+          }));
+          setExercises(mapped);
+          setSelectedExerciseId(mapped[0].id);
         }
       });
     }

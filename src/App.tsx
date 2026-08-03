@@ -5,6 +5,7 @@ import { OnboardingWizard } from './components/Onboarding/OnboardingWizard';
 import { HomeDashboard } from './components/Home/HomeDashboard';
 import { BottomNav, NavTab } from './components/Home/BottomNav';
 import { MealLogPage } from './components/Nutrition/MealLogPage';
+import { WorkoutPage } from './components/Workout/WorkoutPage';
 import { Profile, NutritionLog, MealEntry, ParsedFoodItem } from './types/database.types';
 import { getOrCreateTodayNutritionLog, saveMealEntry, getTodayMeals } from './services/nutritionService';
 import './components/Home/home.css';
@@ -23,16 +24,24 @@ export const App: React.FC = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchUserData(session.user.id);
-      else setLoading(false);
+      if (session) {
+        setActiveTab('home');
+        fetchUserData(session.user.id);
+      } else {
+        setLoading(false);
+      }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchUserData(session.user.id);
-      else setLoading(false);
+      if (session) {
+        setActiveTab('home');
+        fetchUserData(session.user.id);
+      } else {
+        setLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -160,20 +169,9 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Workout placeholder */}
+      {/* Workout Page */}
       {activeTab === 'workout' && (
-        <div className="hd-placeholder-page">
-          <div className="hd-placeholder-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 12h12M4 8v8M20 8v8M2 10v4M22 10v4" />
-            </svg>
-          </div>
-          <h2 className="hd-placeholder-title">Today's Workout</h2>
-          <p className="hd-placeholder-subtitle">
-            Your personalized workout routine will appear here.
-            <br />Coming soon.
-          </p>
-        </div>
+        <WorkoutPage onBackToHome={() => setActiveTab('home')} />
       )}
 
       {/* Settings */}

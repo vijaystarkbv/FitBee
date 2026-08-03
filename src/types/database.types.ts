@@ -58,6 +58,37 @@ export interface WeightLog {
   weight_kg: number;
 }
 
+export type ExerciseDifficulty = 'Beginner' | 'Intermediate' | 'Advanced';
+export type AnimationStatus = 'Pending' | 'Processing' | 'Ready' | 'Failed';
+
+export interface MasterExercise {
+  id: string;
+  exercise_code: string; // Immutable unique code e.g., 'EX0001', 'EX0002'
+  exercise_name: string;
+  exercise_category: string; // Warm-up & Mobility, Chest, Back, Shoulders, Arms, Core, Legs
+  exercise_group: string; // e.g., Push-up, Biceps - Dumbbell, Planks, Squats
+  difficulty: ExerciseDifficulty;
+  workout_location: string; // Home, Home Equipment, Gym
+  equipment_required: string;
+  primary_muscles: string[];
+  secondary_muscles: string[];
+  animation_key: string | null;
+  animation_status: AnimationStatus;
+  thumbnail_url?: string | null;
+  animation_url?: string | null;
+  description?: string | null;
+  instructions?: string | null;
+  common_mistakes?: string | null;
+  beginner_tips?: string | null;
+  breathing?: string | null;
+  tempo?: string | null;
+  notes?: string | null;
+  created_at: string;
+  // Compatibility aliases
+  name?: string;
+  category?: string;
+}
+
 export interface Exercise {
   id: string;
   name: string;
@@ -66,40 +97,38 @@ export interface Exercise {
   created_at: string;
 }
 
+export type TemplateType = 'system' | 'user';
+
 export interface WorkoutTemplate {
   id: string;
+  user_id: string | null;
   name: string;
-  location_type: TrainingLocation;
-  requires_dumbbells: boolean;
   description: string | null;
+  template_type: TemplateType;
+  forked_from_template_id: string | null;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface TemplateExercise {
+export interface WorkoutTemplateExercise {
   id: string;
   template_id: string;
   exercise_id: string;
   order_index: number;
-  default_sets: number;
-  default_reps: number;
-}
-
-export interface UserWorkout {
-  id: string;
-  user_id: string;
-  name: string;
-  created_at: string;
-}
-
-export interface UserWorkoutExercise {
-  id: string;
-  user_workout_id: string;
-  exercise_id: string;
-  order_index: number;
   target_sets: number;
   target_reps: number;
-  target_weight_kg: number;
-  exercise?: Exercise;
+  default_weight_kg: number;
+  created_at: string;
+  updated_at: string;
+  exercise?: MasterExercise;
+  // Compatibility alias
+  target_weight_kg?: number;
 }
+
+// Backward-compatibility type aliases
+export type UserWorkout = WorkoutTemplate;
+export type UserWorkoutExercise = WorkoutTemplateExercise;
 
 export interface WorkoutLog {
   id: string;

@@ -19,12 +19,13 @@ export function calculateNextExerciseTarget(
 
   // Default initial baseline if no history exists yet
   if (exerciseHistory.length === 0) {
+    const defaultWeight = targetExercise.default_weight_kg ?? targetExercise.target_weight_kg ?? 0;
     return {
       exerciseId,
       exerciseName,
-      previousWeightKg: targetExercise.target_weight_kg,
+      previousWeightKg: defaultWeight,
       previousReps: targetExercise.target_reps,
-      suggestedWeightKg: targetExercise.target_weight_kg,
+      suggestedWeightKg: defaultWeight,
       suggestedReps: targetExercise.target_reps,
       reason: 'Initial baseline target.',
     };
