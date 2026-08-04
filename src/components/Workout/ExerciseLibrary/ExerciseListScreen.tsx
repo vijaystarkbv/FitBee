@@ -6,6 +6,7 @@ interface ExerciseListScreenProps {
   subcategoryTitle?: string;
   difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
   onBack: () => void;
+  onSelectExercise?: (exerciseName: string) => void;
 }
 
 export const ExerciseListScreen: React.FC<ExerciseListScreenProps> = ({
@@ -13,6 +14,7 @@ export const ExerciseListScreen: React.FC<ExerciseListScreenProps> = ({
   subcategoryTitle,
   difficulty,
   onBack,
+  onSelectExercise,
 }) => {
 
   const exercises: ExerciseLibraryItem[] = useMemo(() => {
@@ -65,7 +67,12 @@ export const ExerciseListScreen: React.FC<ExerciseListScreenProps> = ({
           </div>
         ) : (
           exercises.map((ex) => (
-            <div key={ex.id} className="exlib-ex-card">
+            <div
+              key={ex.id}
+              className="exlib-ex-card"
+              style={{ cursor: 'pointer' }}
+              onClick={() => onSelectExercise && onSelectExercise(ex.name)}
+            >
               <div className="exlib-ex-header">
                 <h3 className="exlib-ex-name">{ex.name}</h3>
                 <span className={`exlib-diff-pill ${getDifficultyClass(ex.difficulty)}`}>

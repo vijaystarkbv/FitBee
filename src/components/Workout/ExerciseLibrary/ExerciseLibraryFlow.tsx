@@ -4,9 +4,10 @@ import { MuscleGroupSelectionScreen } from './MuscleGroupSelectionScreen';
 import { WarmUpSubcategoryScreen } from './WarmUpSubcategoryScreen';
 import { DifficultySelectionScreen, DifficultyLevel } from './DifficultySelectionScreen';
 import { ExerciseListScreen } from './ExerciseListScreen';
+import { ExerciseDetailView } from '../ExerciseDetail/ExerciseDetailView';
 import './exerciseLibrary.css';
 
-type ScreenStep = 'main' | 'warmup_subcategories' | 'difficulty' | 'exercise_list';
+type ScreenStep = 'main' | 'warmup_subcategories' | 'difficulty' | 'exercise_list' | 'exercise_detail';
 
 interface ExerciseLibraryFlowProps {
   onBackToWorkout: () => void;
@@ -17,6 +18,7 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
   const [selectedCategory, setSelectedCategory] = useState<MainCategory | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<WarmUpSubcategory | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel | null>(null);
+  const [selectedExerciseName, setSelectedExerciseName] = useState<string | null>(null);
 
   // Select main category
   const handleSelectCategory = (cat: MainCategory) => {
@@ -41,9 +43,17 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
     setScreen('exercise_list');
   };
 
+  // Select specific exercise
+  const handleSelectExercise = (exerciseName: string) => {
+    setSelectedExerciseName(exerciseName);
+    setScreen('exercise_detail');
+  };
+
   // Back button handling
   const handleBack = () => {
-    if (screen === 'exercise_list') {
+    if (screen === 'exercise_detail') {
+      setScreen('exercise_list');
+    } else if (screen === 'exercise_list') {
       setScreen('difficulty');
     } else if (screen === 'difficulty') {
       if (selectedCategory?.title === 'Stretches - Warm-up') {
@@ -88,6 +98,14 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
           categoryTitle={selectedCategory.title}
           subcategoryTitle={selectedSubcategory?.title}
           difficulty={selectedDifficulty}
+          onBack={handleBack}
+          onSelectExercise={handleSelectExercise}
+        />
+      )}
+
+      {screen === 'exercise_detail' && selectedExerciseName && (
+        <ExerciseDetailView
+          exerciseName={selectedExerciseName}
           onBack={handleBack}
         />
       )}

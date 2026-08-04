@@ -1,0 +1,441 @@
+/* FitBee Exercise Detail System Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.fitbee-exdetail-page {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #FAFAF8;
+  color: #1F2937;
+  min-height: 100vh;
+  padding: 24px 16px 48px;
+  box-sizing: border-box;
+}
+
+.fitbee-exdetail-container {
+  max-width: 580px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Header & Navigation Breadcrumb */
+.fitbee-exdetail-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.fitbee-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #FFFFFF;
+  border: 1px solid #E8E8E6;
+  color: #5C8D89;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fitbee-back-btn:hover {
+  background: #F3F4F6;
+  transform: translateY(-1px);
+}
+
+.fitbee-back-btn:active {
+  transform: scale(0.97);
+}
+
+/* SECTION 1: Interactive 3D Viewer Card */
+.fitbee-3d-wrapper {
+  background: #000000;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+
+.fitbee-3d-container {
+  position: relative;
+  width: 100%;
+  height: 420px;
+  background-color: #000000;
+  cursor: grab;
+  user-select: none;
+}
+
+.fitbee-3d-container:active {
+  cursor: grabbing;
+}
+
+/* 3D Loading Overlay */
+.fitbee-3d-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #D1D5DB;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 15;
+}
+
+.fitbee-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #5C8D89;
+  border-radius: 50%;
+  animation: fitbeeSpin 0.8s linear infinite;
+}
+
+@keyframes fitbeeSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Viewport Hint Badge */
+.fitbee-3d-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  color: #9CA3AF;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 20px;
+  pointer-events: none;
+}
+
+/* Top-Right Playback Controls Overlay */
+.fitbee-3d-controls-overlay {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 20;
+}
+
+.fitbee-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(20, 20, 26, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: all 180ms ease;
+  user-select: none;
+}
+
+.fitbee-ctrl-btn:hover {
+  background: rgba(35, 35, 45, 0.9);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.fitbee-ctrl-btn:active {
+  transform: scale(0.96);
+}
+
+.fitbee-ctrl-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Speed Selector Menu Dropdown */
+.fitbee-speed-wrapper {
+  position: relative;
+}
+
+.fitbee-speed-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  background: rgba(18, 18, 24, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 80px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 30;
+  animation: fitbeeMenuFade 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fitbeeMenuFade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.fitbee-speed-option {
+  background: transparent;
+  border: none;
+  color: #D1D5DB;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.fitbee-speed-option:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+}
+
+.fitbee-speed-option.active {
+  background: #5C8D89;
+  color: #FFFFFF;
+}
+
+/* Muscle Legend Bar */
+.fitbee-legend-bar {
+  background: #111115;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.fitbee-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fitbee-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.fitbee-legend-dot.primary {
+  background-color: #FF3B30;
+  box-shadow: 0 0 8px rgba(255, 59, 48, 0.6);
+}
+
+.fitbee-legend-dot.secondary {
+  background-color: #FFCC00;
+  box-shadow: 0 0 8px rgba(255, 204, 0, 0.6);
+}
+
+.fitbee-legend-dot.neutral {
+  background-color: #7E7E84;
+}
+
+.fitbee-legend-label {
+  color: #D1D5DB;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* SECTION 2: Exercise Information Cards */
+.fitbee-card {
+  background: #FFFFFF;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+  border: 1px solid #E8E8E6;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Card 1: Title & Header */
+.fitbee-header-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px;
+}
+
+.fitbee-ex-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1F2937;
+  letter-spacing: -0.4px;
+}
+
+.fitbee-diff-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #E8F5E9;
+  color: #2E7D32;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 20px;
+}
+
+.fitbee-diff-badge.intermediate {
+  background: #FFF8E1;
+  color: #F57F17;
+}
+
+.fitbee-diff-badge.advanced {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+/* Section Titles inside Cards */
+.fitbee-card-heading {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1F2937;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* How to Perform Steps */
+.fitbee-steps-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fitbee-step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.fitbee-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(92, 141, 137, 0.12);
+  color: #5C8D89;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.fitbee-step-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #374151;
+  font-weight: 450;
+}
+
+/* Metadata Grid: Need & Equipment */
+.fitbee-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.fitbee-meta-box {
+  background: #FAFAF8;
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid #F0F0EE;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fitbee-meta-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fitbee-meta-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1F2937;
+}
+
+/* Tips Section */
+.fitbee-tips-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fitbee-tip-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4B5563;
+}
+
+.fitbee-tip-bullet {
+  color: #5C8D89;
+  font-size: 18px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .fitbee-exdetail-page {
+    padding: 16px 12px 32px;
+  }
+  .fitbee-3d-container {
+    height: 350px;
+  }
+  .fitbee-ex-title {
+    font-size: 20px;
+  }
+}
