@@ -1,6 +1,6 @@
 import React from 'react';
 import { getExerciseDetailByName } from '../../../data/exerciseDetailData';
-import { Exercise3DViewer } from './Exercise3DViewer';
+import { ExerciseVideoPlayer } from './ExerciseVideoPlayer';
 import './exerciseDetail.css';
 
 interface ExerciseDetailViewProps {
@@ -11,10 +11,35 @@ interface ExerciseDetailViewProps {
 export const ExerciseDetailView: React.FC<ExerciseDetailViewProps> = ({ exerciseName, onBack }) => {
   const detail = getExerciseDetailByName(exerciseName);
 
-  const renderStars = (diff: string) => {
-    if (diff === 'Beginner') return '⭐';
-    if (diff === 'Intermediate') return '⭐⭐';
-    return '⭐⭐⭐';
+  const renderDifficultyBadge = (difficulty: string) => {
+    const diffLower = difficulty.toLowerCase();
+    
+    // Theme-harmonized SVG Star Coin Icon Colors:
+    // Beginner: #5C8D89 (Theme Primary Accent Teal)
+    // Intermediate: #E67E22 (Theme Warm Orange)
+    // Advanced: #D32F2F (Theme Coral Red)
+    let iconColor = '#5C8D89';
+    if (diffLower === 'intermediate') iconColor = '#E67E22';
+    if (diffLower === 'advanced') iconColor = '#D32F2F';
+
+    return (
+      <span className={`fitbee-diff-badge ${diffLower}`}>
+        <svg
+          className="fitbee-diff-icon"
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill={iconColor}
+          stroke={iconColor}
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+        {difficulty}
+      </span>
+    );
   };
 
   return (
@@ -30,23 +55,18 @@ export const ExerciseDetailView: React.FC<ExerciseDetailViewProps> = ({ exercise
           </button>
         </div>
 
-        {/* SECTION 1: Interactive 3D Exercise Viewer & Legend */}
-        <Exercise3DViewer
+        {/* SECTION 1: Cloudflare R2 MP4 Video Player & Target Muscle Legend */}
+        <ExerciseVideoPlayer
+          exerciseName={detail.name}
           primaryMuscles={detail.primaryMuscles}
           secondaryMuscles={detail.secondaryMuscles}
-          animationKey={detail.modelConfig.animationKey}
-          category={detail.modelConfig.category || 'neck'}
-          cameraFocusBone={detail.modelConfig.cameraFocusBone}
-          cameraOffsetY={detail.modelConfig.cameraOffsetY}
         />
 
         {/* SECTION 2: Exercise Information Cards */}
         {/* Title & Difficulty Card */}
         <div className="fitbee-card fitbee-header-card">
           <h1 className="fitbee-ex-title">{detail.name}</h1>
-          <span className={`fitbee-diff-badge ${detail.difficulty.toLowerCase()}`}>
-            {renderStars(detail.difficulty)} {detail.difficulty}
-          </span>
+          {renderDifficultyBadge(detail.difficulty)}
         </div>
 
         {/* How to Perform Card */}
@@ -68,7 +88,7 @@ export const ExerciseDetailView: React.FC<ExerciseDetailViewProps> = ({ exercise
           </ol>
         </div>
 
-        {/* Need & Equipment Card */}
+        {/* Need, Equipment & Category Cards */}
         <div className="fitbee-card">
           <div className="fitbee-meta-grid">
             <div className="fitbee-meta-box">
@@ -78,6 +98,10 @@ export const ExerciseDetailView: React.FC<ExerciseDetailViewProps> = ({ exercise
             <div className="fitbee-meta-box">
               <span className="fitbee-meta-label">Equipment</span>
               <span className="fitbee-meta-value">{detail.equipment}</span>
+            </div>
+            <div className="fitbee-meta-box">
+              <span className="fitbee-meta-label">Category</span>
+              <span className="fitbee-meta-value">{detail.category || 'Mobility'}</span>
             </div>
           </div>
         </div>

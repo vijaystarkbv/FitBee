@@ -11,12 +11,13 @@ export interface ExerciseDetailItem {
   id: string;
   name: string;
   difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
-  location: 'Home' | 'Home Equipment' | 'Gym';
+  location: string;
   equipment: string;
+  category: string;
   target: string;
   primaryMuscles: string[];
   secondaryMuscles: string[];
   howToPerform: string[];
   tips: string[];
-  modelConfig: ExerciseModelConfig;
+  modelConfig?: ExerciseModelConfig;
 }

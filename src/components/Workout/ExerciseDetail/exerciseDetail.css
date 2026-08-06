@@ -312,12 +312,17 @@
 
 .fitbee-diff-badge.intermediate {
   background: #FFF8E1;
-  color: #F57F17;
+  color: #E67E22;
 }
 
 .fitbee-diff-badge.advanced {
   background: #FFEBEE;
   color: #C62828;
+}
+
+.fitbee-diff-icon {
+  flex-shrink: 0;
+  display: inline-block;
 }
 
 /* Section Titles inside Cards */
@@ -370,35 +375,40 @@
   font-weight: 450;
 }
 
-/* Metadata Grid: Need & Equipment */
+/* Metadata Grid: Need, Equipment & Category */
 .fitbee-meta-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 
 .fitbee-meta-box {
   background: #FAFAF8;
   border-radius: 18px;
-  padding: 16px;
+  padding: 14px 16px;
   border: 1px solid #F0F0EE;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .fitbee-meta-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #6B7280;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .fitbee-meta-value {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #1F2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Tips Section */

@@ -18,3 +18,17 @@ client_secret*.json
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local videos
+videos/
+
+# Python
+__pycache__/
+*.pyc
+
+# Blender backups
+*.blend1
+
+# Local Blender working files
+Extra.blend
+Extra_In_Case_Everything_Dies.blend

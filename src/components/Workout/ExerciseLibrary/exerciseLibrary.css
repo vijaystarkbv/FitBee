@@ -356,3 +356,819 @@
   color: #6B7280;
   margin: 0;
 }
+
+/* ==========================================================================
+   FITBEE INTELLIGENT SEARCH SYSTEM STYLES (Design Theme Compliant)
+   ========================================================================== */
+
+.fitbee-search-flow-wrapper {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.fitbee-global-search-container {
+  margin-bottom: 24px;
+}
+
+.fitbee-search-relative-box {
+  position: relative;
+  width: 100%;
+}
+
+/* Search Bar (54px Height, 16px Radius, Soft Border, Focus Glow) */
+.fitbee-search-bar-wrapper {
+  width: 100%;
+}
+
+.fitbee-search-bar-inner {
+  height: 54px;
+  border-radius: 16px;
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.fitbee-search-bar-inner:focus-within {
+  border-color: #5C8D89;
+  box-shadow: 0 0 0 4px rgba(92, 141, 137, 0.15), 0 6px 20px rgba(0, 0, 0, 0.05);
+}
+
+.fitbee-search-bar-icon {
+  color: #89B0AE;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fitbee-search-bar-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  font-weight: 450;
+  color: #1F2937;
+}
+
+.fitbee-search-bar-input::placeholder {
+  color: #9CA3AF;
+}
+
+.fitbee-search-bar-clear-btn {
+  border: none;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.fitbee-search-bar-clear-btn:hover {
+  color: #1F2937;
+  background-color: #F3F4F6;
+}
+
+.fitbee-search-bar-submit-btn {
+  border: none;
+  background-color: #5C8D89;
+  color: #FFFFFF;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 100ms ease;
+}
+
+.fitbee-search-bar-submit-btn:hover {
+  background-color: #4A7A76;
+}
+
+.fitbee-search-bar-submit-btn:active {
+  transform: scale(0.97);
+}
+
+/* Live Suggestions Dropdown */
+.fitbee-sug-dropdown {
+  position: absolute;
+  top: 62px;
+  left: 0;
+  right: 0;
+  background-color: #FFFFFF;
+  border-radius: 18px;
+  border: 1px solid #E8E8E6;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+  padding: 12px 0;
+}
+
+.fitbee-sug-section {
+  padding: 8px 16px;
+}
+
+.fitbee-sug-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fitbee-sug-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fitbee-sug-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.fitbee-sug-item.active,
+.fitbee-sug-item:hover {
+  background-color: #FAFAF8;
+}
+
+.fitbee-sug-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1F2937;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sug-icon {
+  color: #89B0AE;
+}
+
+.fitbee-sug-remove-btn {
+  border: none;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.fitbee-sug-remove-btn:hover {
+  color: #C96A6A;
+  background-color: rgba(201, 106, 106, 0.1);
+}
+
+.fitbee-sug-type-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.sug-badge-exercise { background-color: rgba(92, 141, 137, 0.12); color: #5C8D89; }
+.sug-badge-muscle { background-color: rgba(137, 176, 174, 0.18); color: #3F6F6B; }
+.sug-badge-equipment { background-color: rgba(230, 160, 40, 0.12); color: #B47806; }
+.sug-badge-goal { background-color: rgba(70, 103, 97, 0.12); color: #466761; }
+
+.fitbee-popular-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.fitbee-popular-chip {
+  border: 1px solid #E5E7EB;
+  background-color: #FAFAF8;
+  color: #1F2937;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.fitbee-popular-chip:hover {
+  background-color: #EFF3F2;
+  border-color: #5C8D89;
+  color: #5C8D89;
+}
+
+.fitbee-sug-empty {
+  padding: 16px;
+  font-size: 13px;
+  color: #6B7280;
+  text-align: center;
+}
+
+.fitbee-sug-empty kbd {
+  background-color: #F3F4F6;
+  border: 1px solid #D1D5DB;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+/* Search Results Screen */
+.fitbee-search-results-container {
+  width: 100%;
+}
+
+.fitbee-search-results-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.fitbee-results-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fitbee-results-count-badge {
+  font-size: 14px;
+  font-weight: 600;
+  color: #5C8D89;
+  background-color: rgba(92, 141, 137, 0.1);
+  padding: 4px 12px;
+  border-radius: 99px;
+}
+
+.fitbee-results-query-label {
+  font-size: 14px;
+  color: #6B7280;
+}
+
+.fitbee-fuzzy-note {
+  font-size: 13px;
+  color: #4B5563;
+  margin: 6px 0 0;
+}
+
+/* Filter & Sort Button */
+.fitbee-filter-trigger-btn {
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #1F2937;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  transition: all 150ms ease;
+}
+
+.fitbee-filter-trigger-btn:hover {
+  border-color: #5C8D89;
+  color: #5C8D89;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.fitbee-filter-trigger-btn.active {
+  border-color: #5C8D89;
+  background-color: rgba(92, 141, 137, 0.06);
+  color: #5C8D89;
+}
+
+.fitbee-chip-badge {
+  background-color: #5C8D89;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Active Chips Bar */
+.fitbee-filter-chips-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  background-color: #FFFFFF;
+  border: 1px solid #E8E8E6;
+  border-radius: 14px;
+}
+
+.fitbee-chips-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  text-transform: uppercase;
+}
+
+.fitbee-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background-color: rgba(92, 141, 137, 0.12);
+  color: #4A7A76;
+}
+
+.fitbee-chip-remove {
+  border: none;
+  background: transparent;
+  color: #4A7A76;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.fitbee-chip-remove:hover {
+  background-color: rgba(92, 141, 137, 0.2);
+}
+
+/* Dynamic Filter Modal & Mobile Bottom Sheet */
+.fitbee-filter-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.fitbee-filter-modal-content {
+  background-color: #FFFFFF;
+  width: 100%;
+  max-width: 580px;
+  max-height: 85vh;
+  border-radius: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fitbee-filter-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #E8E8E6;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.fitbee-filter-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1F2937;
+  margin: 0 0 4px;
+}
+
+.fitbee-filter-subtitle {
+  font-size: 13px;
+  color: #6B7280;
+  margin: 0;
+}
+
+.fitbee-filter-close-btn {
+  border: none;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fitbee-filter-close-btn:hover {
+  color: #1F2937;
+  background-color: #F3F4F6;
+}
+
+.fitbee-filter-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.fitbee-filter-group-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: #1F2937;
+  margin: 0 0 10px;
+}
+
+.fitbee-filter-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.fitbee-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #E8E8E6;
+  background-color: #FAFAF8;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.fitbee-checkbox-item:hover {
+  border-color: #5C8D89;
+}
+
+.fitbee-checkbox-item.checked {
+  border-color: #5C8D89;
+  background-color: rgba(92, 141, 137, 0.08);
+}
+
+.fitbee-checkbox-item input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fitbee-checkbox-custom {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.8px solid #D1D5DB;
+  background-color: #FFFFFF;
+  position: relative;
+  transition: all 150ms ease;
+}
+
+.fitbee-checkbox-item.checked .fitbee-checkbox-custom {
+  background-color: #5C8D89;
+  border-color: #5C8D89;
+}
+
+.fitbee-checkbox-item.checked .fitbee-checkbox-custom::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.fitbee-checkbox-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1F2937;
+}
+
+.fitbee-filter-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #E8E8E6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background-color: #FAFAF8;
+}
+
+.fitbee-btn-secondary {
+  border: 1px solid #E5E7EB;
+  background-color: #FFFFFF;
+  color: #4B5563;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.fitbee-btn-secondary:hover:not(:disabled) {
+  border-color: #C96A6A;
+  color: #C96A6A;
+}
+
+.fitbee-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fitbee-btn-primary {
+  border: none;
+  background-color: #5C8D89;
+  color: #FFFFFF;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 22px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(92, 141, 137, 0.25);
+}
+
+.fitbee-btn-primary:hover {
+  background-color: #4A7A76;
+}
+
+/* Empty State */
+.fitbee-search-empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  background-color: #FFFFFF;
+  border: 1px solid #E8E8E6;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  margin-top: 12px;
+}
+
+.fitbee-empty-icon-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: rgba(92, 141, 137, 0.1);
+  color: #5C8D89;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.fitbee-empty-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1F2937;
+  margin: 0 0 6px;
+}
+
+.fitbee-empty-subtitle {
+  font-size: 14px;
+  color: #6B7280;
+  max-width: 420px;
+  margin: 0 auto 20px;
+  line-height: 1.5;
+}
+
+/* Animations */
+.animate-fade-in {
+  animation: fitbeeFadeIn 200ms ease forwards;
+}
+
+.animate-fade-down {
+  animation: fitbeeFadeDown 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-up {
+  animation: fitbeeSlideUp 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fitbeeFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fitbeeFadeDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fitbeeSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Mobile responsive bottom sheet */
+@media (max-width: 640px) {
+  .fitbee-filter-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .fitbee-filter-modal-content {
+    max-width: 100%;
+    max-height: 90vh;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .fitbee-filter-checkbox-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Refined Search UX & Design Rules --- */
+.fitbee-search-kbd-badge {
+  background-color: #F3F4F6;
+  border: 1px solid #D1D5DB;
+  color: #6B7280;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.fitbee-highlight {
+  background-color: rgba(92, 141, 137, 0.22);
+  color: #111827;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-weight: 600;
+  transition: background-color 200ms ease;
+}
+
+.fitbee-sug-highlight {
+  background-color: rgba(92, 141, 137, 0.2);
+  color: #1F2937;
+  border-radius: 2px;
+  padding: 0 2px;
+  font-weight: 600;
+}
+
+.fitbee-sug-count-text {
+  color: #6B7280;
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+.fitbee-sug-footer {
+  border-top: 1px solid #E8E8E6;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  font-size: 11px;
+  color: #9CA3AF;
+  background-color: #FAFAF8;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+
+.fitbee-sug-kbd {
+  background-color: #FFFFFF;
+  border: 1px solid #D1D5DB;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: #4B5563;
+}
+
+.fitbee-match-reason-wrapper {
+  margin: 4px 0 8px;
+}
+
+.fitbee-match-reason-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #374151;
+  background-color: #F3F4F6;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid #E5E7EB;
+}
+
+.fitbee-reason-svg {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.fitbee-equipment-tag {
+  background-color: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
+.fitbee-primary-muscle-text {
+  color: #111827;
+  font-weight: 650;
+}
+
+/* Accordion Filter Section Header */
+.fitbee-filter-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding-bottom: 8px;
+  user-select: none;
+}
+
+.fitbee-chevron-svg {
+  color: #6B7280;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fitbee-chevron-svg.collapsed {
+  transform: rotate(180deg);
+}
+
+.fitbee-chevron-svg.expanded {
+  transform: rotate(0deg);
+}
+
+/* Sticky In-Filter Search Input Wrapper */
+.fitbee-sticky-search-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background-color: #FFFFFF;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.fitbee-filter-search-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border: 1px solid #D1D5DB;
+  background-color: #FAFAF8;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  color: #1F2937;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.fitbee-filter-search-input:focus {
+  border-color: #5C8D89;
+  box-shadow: 0 0 0 3px rgba(92, 141, 137, 0.12);
+  background-color: #FFFFFF;
+}
+
+/* Sticky Modal Footer */
+.fitbee-filter-footer {
+  position: sticky;
+  bottom: 0;
+  background-color: #FFFFFF;
+  border-top: 1px solid #E8E8E6;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom-left-radius: 20px;
+  border-bottom-right-radius: 20px;
+  z-index: 10;
+}
+
+
+

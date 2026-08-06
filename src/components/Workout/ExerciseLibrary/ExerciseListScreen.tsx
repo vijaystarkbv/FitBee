@@ -100,8 +100,13 @@ export const ExerciseListScreen: React.FC<ExerciseListScreenProps> = ({
               {/* Target Muscles */}
               {ex.primaryMuscles.length > 0 && (
                 <p className="exlib-ex-muscles">
-                  Target: <strong style={{ color: '#1F2937' }}>{ex.primaryMuscles.join(', ')}</strong>
-                  {ex.secondaryMuscles.length > 0 && ` • Secondary: ${ex.secondaryMuscles.join(', ')}`}
+                  <strong style={{ color: '#1F2937' }}>{ex.primaryMuscles.join(', ')}</strong>
+                  {ex.secondaryMuscles &&
+                  ex.secondaryMuscles.length > 0 &&
+                  ex.secondaryMuscles[0] !== 'None' &&
+                  ex.secondaryMuscles[0] !== ''
+                    ? ` • ${ex.secondaryMuscles.join(', ')}`
+                    : ''}
                 </p>
               )}
             </div>

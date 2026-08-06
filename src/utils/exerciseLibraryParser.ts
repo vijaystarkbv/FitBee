@@ -1,4 +1,5 @@
 import rawMarkdown from '../../FitBee_Exercise_Library.md?raw';
+import { getExerciseDetailByName } from '../data/exerciseDetailData';
 
 export interface ExerciseLibraryItem {
   id: string;
@@ -100,76 +101,21 @@ export function parseExerciseLibrary(): ExerciseLibraryItem[] {
 
     // Exercise entry line
     if ((line.includes('🟩') || line.includes('🟨') || line.includes('🟥')) && !line.includes('Legend') && !line.includes('=')) {
-      let location: 'Home' | 'Home Equipment' | 'Gym' = 'Home';
-      if (line.includes('🟩')) location = 'Home';
-      else if (line.includes('🟨')) location = 'Home Equipment';
-      else if (line.includes('🟥')) location = 'Gym';
-
       const match = line.match(/(?:🟩|🟨|🟥)\s*([^#|]+)/);
       if (match) {
         const exName = match[1].trim();
-
-        let difficulty: 'Beginner' | 'Intermediate' | 'Advanced' = 'Beginner';
-        let primaryMuscles: string[] = [];
-        let secondaryMuscles: string[] = [];
-
-        if (i + 1 < lines.length) {
-          const nextCleanLine = lines[i + 1].replace(/^[│├└─\s]+/, '').trim();
-          if (nextCleanLine.startsWith('#')) {
-            const meta = nextCleanLine.substring(1).trim();
-            const parts = meta.split('|');
-
-            if (parts[0]) {
-              const muscleTokens = parts[0].trim().split(',').map((m) => m.trim()).filter(Boolean);
-              if (muscleTokens.length > 0) {
-                primaryMuscles = [muscleTokens[0]];
-                secondaryMuscles = muscleTokens.slice(1);
-              }
-            }
-
-            if (parts[1]) {
-              const diffPart = parts[1].trim();
-              if (diffPart.includes('Intermediate') || diffPart.includes('🟡')) difficulty = 'Intermediate';
-              else if (diffPart.includes('Advanced') || diffPart.includes('🔴')) difficulty = 'Advanced';
-              else if (diffPart.includes('Beginner') || diffPart.includes('🟢')) difficulty = 'Beginner';
-            }
-          }
-        }
-
-        // Derive clean equipment string
-        let equipment = 'None';
-        const nameLower = exName.toLowerCase();
-        if (location === 'Home') {
-          if (nameLower.includes('wall')) equipment = 'Wall';
-          else if (nameLower.includes('chair')) equipment = 'Chair';
-          else if (nameLower.includes('doorway')) equipment = 'Doorway';
-          else if (nameLower.includes('bench')) equipment = 'Bench / Chair';
-          else equipment = 'Bodyweight';
-        } else if (location === 'Home Equipment') {
-          if (nameLower.includes('dumbbell')) equipment = 'Adjustable Dumbbells';
-          else if (nameLower.includes('band')) equipment = 'Resistance Band';
-          else if (nameLower.includes('pull-up') || nameLower.includes('chin-up')) equipment = 'Pull-up Bar';
-          else if (nameLower.includes('gripper')) equipment = 'Hand Gripper';
-          else if (nameLower.includes('ab wheel') || nameLower.includes('rollout')) equipment = 'Ab Wheel';
-          else equipment = 'Home Equipment';
-        } else {
-          if (nameLower.includes('smith machine')) equipment = 'Smith Machine';
-          else if (nameLower.includes('cable') || nameLower.includes('pulldown')) equipment = 'Cable Machine';
-          else if (nameLower.includes('barbell')) equipment = 'Barbell';
-          else if (nameLower.includes('pec deck') || nameLower.includes('machine')) equipment = 'Gym Machine';
-          else equipment = 'Gym Equipment';
-        }
+        const detail = getExerciseDetailByName(exName);
 
         items.push({
           id: `ex_${items.length + 1}`,
           name: exName,
           category: currentCategory,
           subcategory: currentCategory === 'Stretches - Warm-up' ? currentWarmupSubcategory : undefined,
-          difficulty,
-          location,
-          equipment,
-          primaryMuscles,
-          secondaryMuscles,
+          difficulty: detail.difficulty,
+          location: (detail.location as 'Home' | 'Home Equipment' | 'Gym') || 'Home',
+          equipment: detail.equipment,
+          primaryMuscles: detail.primaryMuscles,
+          secondaryMuscles: detail.secondaryMuscles,
         });
       }
     }
