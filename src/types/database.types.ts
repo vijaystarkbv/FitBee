@@ -72,6 +72,7 @@ export interface MasterExercise {
   equipment_required: string;
   primary_muscles: string[];
   secondary_muscles: string[];
+  tracking_type: 'reps' | 'timer';
   animation_key: string | null;
   animation_status: AnimationStatus;
   thumbnail_url?: string | null;
@@ -111,13 +112,25 @@ export interface WorkoutTemplate {
   updated_at: string;
 }
 
-export interface WorkoutTemplateExercise {
+export interface WorkoutTemplateDay {
   id: string;
   template_id: string;
+  day_name: string;
+  is_enabled: boolean;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+  name?: string; // fallback alias for UI usage
+}
+
+export interface WorkoutTemplateExercise {
+  id: string;
+  template_day_id: string;
   exercise_id: string;
   order_index: number;
   target_sets: number;
   target_reps: number;
+  target_time_seconds: number | null;
   default_weight_kg: number;
   created_at: string;
   updated_at: string;
@@ -179,4 +192,11 @@ export interface MealEntry {
   carbs: number;
   fat: number;
   parsed_breakdown: ParsedFoodItem[];
+}
+
+export interface ExerciseFavorite {
+  id: string;
+  user_id: string;
+  exercise_id: string;
+  created_at: string;
 }

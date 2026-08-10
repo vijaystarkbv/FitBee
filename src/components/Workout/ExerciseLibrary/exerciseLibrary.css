@@ -1170,5 +1170,151 @@
   z-index: 10;
 }
 
+/* Favorite Star Icon Button */
+.exlib-fav-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background-color: #F3F4F6;
+  color: #9CA3AF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: 12px;
+  flex-shrink: 0;
+  transition: transform 180ms ease, color 180ms ease, background-color 180ms ease;
+}
+
+.exlib-fav-btn:hover {
+  background-color: #E5E7EB;
+  color: #4B5563;
+  transform: scale(1.08);
+}
+
+.exlib-fav-btn.active {
+  color: #EAB308;
+  background-color: rgba(234, 179, 8, 0.12);
+}
+
+.exlib-fav-btn.active:hover {
+  background-color: rgba(234, 179, 8, 0.2);
+  transform: scale(1.12);
+}
+
+/* Card Selection Mode Styles */
+.exlib-ex-card.selectable {
+  cursor: pointer;
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), border-color 200ms ease, background-color 200ms ease;
+}
+
+.exlib-ex-card.selected {
+  border-color: #5C8D89 !important;
+  background-color: rgba(92, 141, 137, 0.06) !important;
+  transform: scale(1.02);
+  box-shadow: 0 8px 24px rgba(92, 141, 137, 0.15) !important;
+}
+
+.exlib-select-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background-color: #5C8D89;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: 12px;
+  flex-shrink: 0;
+  transition: transform 200ms ease, background-color 200ms ease;
+}
+
+.exlib-select-btn.selected {
+  background-color: #22C55E;
+  transform: scale(1.05);
+}
+
+/* Sticky Bottom Selection Bar */
+.fitbee-bottom-selection-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background-color: #FFFFFF;
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.08);
+  padding: 16px 24px;
+  height: 90px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 520px;
+  margin: 0 auto;
+  animation: slideUpFade 220ms ease-out forwards;
+}
+
+@keyframes slideUpFade {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.fitbee-selection-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #1F2937;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.fitbee-selection-bar-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: rgba(92, 141, 137, 0.12);
+  color: #5C8D89;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fitbee-selection-bar-btn {
+  height: 54px;
+  padding: 0 28px;
+  border-radius: 18px;
+  background-color: #5C8D89;
+  color: #FFFFFF;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(92, 141, 137, 0.3);
+  transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.fitbee-selection-bar-btn:hover {
+  background-color: #4A7A76;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(92, 141, 137, 0.4);
+}
+
+.fitbee-selection-bar-btn:active {
+  transform: scale(0.97);
+}
+
+
 
 

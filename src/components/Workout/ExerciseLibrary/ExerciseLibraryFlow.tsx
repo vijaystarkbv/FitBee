@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../../../services/supabaseClient';
 import { MainCategory, WarmUpSubcategory } from '../../../utils/exerciseLibraryParser';
 import { MuscleGroupSelectionScreen } from './MuscleGroupSelectionScreen';
 import { WarmUpSubcategoryScreen } from './WarmUpSubcategoryScreen';
@@ -33,9 +34,21 @@ type ScreenStep =
 
 interface ExerciseLibraryFlowProps {
   onBackToWorkout: () => void;
+  mode?: 'browse' | 'select';
+  onSelectForTemplate?: (exerciseName: string) => void;
+  onSelectMultipleForTemplate?: (exerciseNames: string[]) => void;
+  initialSelectedExercises?: string[];
+  otherDaysExercises?: Record<string, string[]>;
 }
 
-export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBackToWorkout }) => {
+export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ 
+  onBackToWorkout,
+  mode = 'browse',
+  onSelectForTemplate,
+  onSelectMultipleForTemplate,
+  initialSelectedExercises = [],
+  otherDaysExercises = {}
+}) => {
   const [screen, setScreen] = useState<ScreenStep>('main');
   const [previousScreen, setPreviousScreen] = useState<ScreenStep>('main');
 
@@ -43,6 +56,28 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
   const [selectedSubcategory, setSelectedSubcategory] = useState<WarmUpSubcategory | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel | null>(null);
   const [selectedExerciseName, setSelectedExerciseName] = useState<string | null>(null);
+
+  // Selection state for Selection Mode
+  const [selectedExercises, setSelectedExercises] = useState<string[]>(initialSelectedExercises);
+  const [showReviewSlide, setShowReviewSlide] = useState<boolean>(false);
+
+  const handleContinueSelection = () => {
+    if (selectedExercises.length > 0) {
+      setShowReviewSlide(true);
+    }
+  };
+
+  const handleConfirmSaveSelection = () => {
+    if (onSelectMultipleForTemplate) {
+      onSelectMultipleForTemplate(selectedExercises);
+    } else if (onSelectForTemplate && selectedExercises.length > 0) {
+      onSelectForTemplate(selectedExercises[0]);
+    }
+    setShowReviewSlide(false);
+  };
+
+  // Favorites state for Browse Mode
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
   // Search State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -64,10 +99,83 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
   // Current Search Response
   const [searchResponse, setSearchResponse] = useState<SearchResultsResponse | null>(null);
 
-  // Load recent searches on mount
+  // Load recent searches and favorites on mount
   useEffect(() => {
     setRecentSearches(getRecentSearches());
+
+    const fetchFavorites = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        const { data } = await supabase
+          .from('exercise_favorites')
+          .select('exercise_id, master_exercises(exercise_name)')
+          .eq('user_id', session.user.id);
+        
+        if (data) {
+          const favSet = new Set<string>();
+          data.forEach((item: any) => {
+            if (item.master_exercises?.exercise_name) {
+              favSet.add(item.master_exercises.exercise_name);
+            }
+          });
+          setFavorites(favSet);
+        }
+      } catch (err) {
+        console.error('Failed to load favorites:', err);
+      }
+    };
+
+    fetchFavorites();
   }, []);
+
+  const handleToggleFavorite = async (exerciseName: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const isFav = favorites.has(exerciseName);
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        if (isFav) next.delete(exerciseName);
+        else next.add(exerciseName);
+        return next;
+      });
+
+      const { data: masterEx } = await supabase
+        .from('master_exercises')
+        .select('id')
+        .eq('exercise_name', exerciseName)
+        .single();
+
+      if (masterEx) {
+        if (isFav) {
+          await supabase
+            .from('exercise_favorites')
+            .delete()
+            .eq('user_id', session.user.id)
+            .eq('exercise_id', masterEx.id);
+        } else {
+          await supabase
+            .from('exercise_favorites')
+            .insert({
+              user_id: session.user.id,
+              exercise_id: masterEx.id,
+            });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+    }
+  };
+
+  const handleToggleSelectExercise = (exerciseName: string) => {
+    setSelectedExercises((prev) =>
+      prev.includes(exerciseName)
+        ? prev.filter((name) => name !== exerciseName)
+        : [...prev, exerciseName]
+    );
+  };
 
   // Update live suggestions when typing (debounced)
   useEffect(() => {
@@ -231,7 +339,6 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
               onSearchSubmit={handlePerformSearch}
               onFocus={() => setIsInputFocused(true)}
               onBlur={() => {
-                // Short delay to allow click on suggestions
                 setTimeout(() => setIsInputFocused(false), 200);
               }}
               onKeyDown={handleSearchKeyDown}
@@ -260,6 +367,7 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
         <MuscleGroupSelectionScreen
           onSelectCategory={handleSelectCategory}
           onBackToWorkout={onBackToWorkout}
+          mode={mode}
         />
       )}
 
@@ -279,16 +387,24 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
         />
       )}
 
+      {/* Step 4: Exercise List */}
       {screen === 'exercise_list' && selectedCategory && selectedDifficulty && (
         <ExerciseListScreen
           categoryTitle={selectedCategory.title}
           subcategoryTitle={selectedSubcategory?.title}
           difficulty={selectedDifficulty}
-          onBack={handleBack}
           onSelectExercise={handleSelectExercise}
+          onBack={handleBack}
+          mode={mode}
+          selectedExercises={selectedExercises}
+          onToggleSelect={handleToggleSelectExercise}
+          favorites={favorites}
+          onToggleFavorite={handleToggleFavorite}
+          otherDaysExercises={otherDaysExercises}
         />
       )}
 
+      {/* Search Results Screen */}
       {screen === 'search_results' && searchResponse && (
         <SearchResultsView
           query={activeSearchQuery}
@@ -299,6 +415,12 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
           onRemoveFilterChip={handleToggleFilter}
           onSelectExercise={handleSelectExercise}
           onClearSearch={handleClearSearch}
+          mode={mode}
+          selectedExercises={selectedExercises}
+          onToggleSelect={handleToggleSelectExercise}
+          favorites={favorites}
+          onToggleFavorite={handleToggleFavorite}
+          otherDaysExercises={otherDaysExercises}
         />
       )}
 
@@ -321,7 +443,134 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ onBack
           totalResultCount={searchResponse.filteredCount}
         />
       )}
+
+      {/* Sticky Bottom Selection Bar (Selection Mode Only) */}
+      {mode === 'select' && selectedExercises.length > 0 && screen !== 'exercise_detail' && !showReviewSlide && (
+        <div className="fitbee-bottom-selection-bar">
+          <div className="fitbee-selection-bar-info">
+            <div className="fitbee-selection-bar-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <span>
+              {selectedExercises.length} {selectedExercises.length === 1 ? 'Exercise Selected' : 'Exercises Selected'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className="fitbee-selection-bar-btn"
+            onClick={handleContinueSelection}
+          >
+            Continue
+          </button>
+        </div>
+      )}
+
+      {/* Selected Exercises Review Slide Modal */}
+      {showReviewSlide && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            animation: 'fadeIn 200ms ease-out',
+          }}
+          onClick={() => setShowReviewSlide(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 520,
+              backgroundColor: '#FAFAF8',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              padding: '28px 24px 32px',
+              boxShadow: '0 -12px 48px rgba(0,0,0,0.15)',
+              maxHeight: '85vh',
+              display: 'flex',
+              flexDirection: 'column',
+              animation: 'slideUp 250ms cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          >
+            {/* Grab Handle */}
+            <div style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: '#E5E7EB', margin: '0 auto 20px' }} />
+
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: '#1F2937', margin: '0 0 6px' }}>
+              Selected Exercises
+            </h2>
+            <p style={{ fontSize: 14, color: '#6B7280', margin: '0 0 20px' }}>
+              Review the exercises chosen for this workout day.
+            </p>
+
+            {/* List of Selected Exercises */}
+            <div 
+              style={{ 
+                flex: 1, 
+                overflowY: 'auto', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 12, 
+                marginBottom: 24,
+                paddingRight: 4
+              }}
+            >
+              {selectedExercises.map((exName, index) => (
+                <div
+                  key={exName + index}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 20,
+                    padding: '16px 20px',
+                    border: '1px solid #E8E8E6',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span style={{ fontSize: 16, fontWeight: 600, color: '#1F2937' }}>
+                    {exName}
+                  </span>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: 'rgba(92, 141, 137, 0.12)', color: '#5C8D89', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Bottom Save Button */}
+            <button
+              type="button"
+              onClick={handleConfirmSaveSelection}
+              style={{
+                width: '100%',
+                height: 54,
+                borderRadius: 18,
+                backgroundColor: '#5C8D89',
+                color: '#FFFFFF',
+                fontSize: 16,
+                fontWeight: 650,
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(92, 141, 137, 0.3)',
+                transition: 'all 200ms ease',
+              }}
+            >
+              Save Exercises
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
