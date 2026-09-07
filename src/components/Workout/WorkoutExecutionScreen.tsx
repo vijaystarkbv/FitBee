@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../services/supabaseClient';
+import { clock } from '../../services/clock';
+import { useClock } from '../../hooks/useClock';
 import { WorkoutTemplateDay, UserWorkoutExercise } from '../../types/database.types';
 import { HorizontalWheelPicker } from './HorizontalWheelPicker';
 import { ExerciseDetailView } from './ExerciseDetail/ExerciseDetailView';
-import { DeleteTemplateModal } from './DeleteTemplateModal';
 
 interface WorkoutExecutionScreenProps {
   templateId: string;
   onClose: () => void;
   onEditTemplate?: (templateId: string) => void;
-  onDeleteTemplate?: () => void;
 }
 
 type ScreenState = 'no_workout_today' | 'select_day' | 'workout';
@@ -28,9 +28,9 @@ const DAYS_ORDER = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fri
 export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({ 
   templateId, 
   onClose,
-  onEditTemplate,
-  onDeleteTemplate
+  onEditTemplate
 }) => {
+  const { now } = useClock();
   const [screen, setScreen] = useState<ScreenState>('select_day');
   const [days, setDays] = useState<WorkoutTemplateDay[]>([]);
   const [selectedDay, setSelectedDay] = useState<WorkoutTemplateDay | null>(null);
@@ -40,7 +40,6 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
 
   // Menu & Modal state
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Exercise Detail Overlay
   const [selectedDetailExerciseName, setSelectedDetailExerciseName] = useState<string | null>(null);
@@ -67,7 +66,7 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
         const dayList = data || [];
         setDays(dayList);
 
-        const todayIndex = new Date().getDay();
+        const todayIndex = clock.now().getDay();
         const todayName = DAYS_ORDER[todayIndex];
 
         // Check if today matches a workout day
@@ -103,11 +102,6 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
     fetchDaysAndCheckToday();
   }, [templateId]);
 
-  const handleDeleteTemplate = () => {
-    setIsMenuOpen(false);
-    setShowDeleteModal(true);
-  };
-
   const handleStartDay = async (day: WorkoutTemplateDay) => {
     setSelectedDay(day);
     setLoading(true);
@@ -116,13 +110,11 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
       const { data: { session } } = await supabase.auth.getSession();
       
       // 1. Fetch exercises for this day
-      const { data: exData, error: exError } = await supabase
+      const { data: exData } = await supabase
         .from('workout_template_exercises')
         .select('*, master_exercises(*)')
         .eq('template_day_id', day.id)
         .order('order_index', { ascending: true });
-
-      if (exError) console.error('Error fetching exercises for day:', exError);
 
       const normalized = (exData || []).map((item: any) => ({
         ...item,
@@ -131,21 +123,22 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
 
       setExercises(normalized);
 
-      // Initialize accordion expansion state (first muscle group expanded by default)
+      // Initialize accordion expansion state: all muscle groups expanded by default
       const muscleMap: Record<string, boolean> = {};
-      normalized.forEach((ex: any, idx: number) => {
-        const pMuscle = ex.exercise?.primary_muscles?.[0] || 'General';
-        if (idx === 0) {
-          muscleMap[pMuscle] = true;
-        } else if (!(pMuscle in muscleMap)) {
-          muscleMap[pMuscle] = false;
-        }
+      normalized.forEach((ex: any) => {
+        const pMuscle = ex.exercise?.primary_muscles?.[0] || 'Other';
+        muscleMap[pMuscle] = true;
       });
       setExpandedMuscles(muscleMap);
 
-      // 2. Fetch or create today's workout_log (since 12:00 AM midnight today)
-      if (session?.user) {
-        const todayStart = new Date();
+      const todayIndex = clock.now().getDay();
+      const todayName = DAYS_ORDER[todayIndex];
+      const dayName = (day.day_name || day.name || '').trim().toLowerCase();
+      const isToday = dayName === todayName.toLowerCase();
+
+      // 2. Fetch or create today's workout_log ONLY if it is today's scheduled workout
+      if (isToday && session?.user) {
+        const todayStart = clock.now();
         todayStart.setHours(0, 0, 0, 0);
 
         const { data: existingLog } = await supabase
@@ -161,7 +154,7 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
         let activeLog = existingLog;
 
         if (!activeLog) {
-          const now = new Date();
+          const now = clock.now();
           const { data: newLog, error: logError } = await supabase
             .from('workout_logs')
             .insert({
@@ -210,11 +203,16 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
             setSavedSetsMap({});
           }
         }
+      } else {
+        // View-only day: ensure no active log session or saved sets
+        setWorkoutLogId(null);
+        setStartTime(null);
+        setSavedSetsMap({});
       }
 
       setScreen('workout');
     } catch (err) {
-      console.error('Failed to start workout:', err);
+      console.error('Failed to load workout day:', err);
       setScreen('workout');
     } finally {
       setLoading(false);
@@ -254,6 +252,14 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
     });
     return groups;
   }, [exercises]);
+
+  const isCurrentDayWorkout = useMemo(() => {
+    if (!selectedDay) return false;
+    const todayIndex = now.getDay();
+    const todayName = DAYS_ORDER[todayIndex];
+    const dayName = (selectedDay.day_name || selectedDay.name || '').trim().toLowerCase();
+    return dayName === todayName.toLowerCase();
+  }, [selectedDay, now]);
 
   const getLocationClass = (location?: string) => {
     if (location === 'Home') return 'location-home';
@@ -451,28 +457,6 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                   Edit Template
                 </button>
-
-                <button
-                  type="button"
-                  onClick={handleDeleteTemplate}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    color: '#EF4444',
-                    fontSize: 14,
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                  Delete Template
-                </button>
               </div>
             )}
           </div>
@@ -481,72 +465,172 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
         <p style={{ fontSize: 14, color: '#6B7280', marginBottom: 28 }}>Choose which day of the routine you want to perform.</p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {days.map((day) => (
-            <div 
-              key={day.id} 
-              className="workout-entry-card"
-              role="button"
-              tabIndex={0}
-              onClick={() => handleStartDay(day)}
-            >
-              <div className="workout-entry-icon" style={{ backgroundColor: 'rgba(92, 141, 137, 0.12)', color: '#5C8D89' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-              </div>
+          {days.map((day) => {
+            const todayIndex = now.getDay();
+            const todayName = DAYS_ORDER[todayIndex];
+            const isDayToday = (day.day_name || day.name || '').trim().toLowerCase() === todayName.toLowerCase();
 
-              <div style={{ flex: 1 }}>
-                <h2 className="workout-entry-title">{day.day_name || day.name}</h2>
-              </div>
+            return (
+              <div 
+                key={day.id} 
+                className="workout-entry-card"
+                role="button"
+                tabIndex={0}
+                onClick={() => handleStartDay(day)}
+              >
+                <div 
+                  className="workout-entry-icon" 
+                  style={{ 
+                    backgroundColor: isDayToday ? 'rgba(92, 141, 137, 0.12)' : '#F3F4F6', 
+                    color: isDayToday ? '#5C8D89' : '#6B7280' 
+                  }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                </div>
 
-              <div style={{ color: '#5C8D89' }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <h2 className="workout-entry-title">{day.day_name || day.name}</h2>
+                    {isDayToday ? (
+                      <span style={{ 
+                        fontSize: 11, 
+                        backgroundColor: 'rgba(92, 141, 137, 0.14)', 
+                        color: '#466761', 
+                        fontWeight: 700, 
+                        padding: '2px 8px', 
+                        borderRadius: 8,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em'
+                      }}>
+                        Today
+                      </span>
+                    ) : (
+                      <span style={{ 
+                        fontSize: 11, 
+                        backgroundColor: '#F3F4F6', 
+                        color: '#6B7280', 
+                        fontWeight: 600, 
+                        padding: '2px 8px', 
+                        borderRadius: 8,
+                        letterSpacing: '0.03em'
+                      }}>
+                        View Only
+                      </span>
+                    )}
+                  </div>
+                  <p className="workout-entry-desc" style={{ marginTop: 2 }}>
+                    {isDayToday ? 'Start logging your workout' : 'Tap to preview scheduled exercises'}
+                  </p>
+                </div>
+
+                <div style={{ color: isDayToday ? '#5C8D89' : '#9CA3AF' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
   }
 
-  // Screen: Active Workout Execution (Organized by Muscle Group Accordions)
+  // Screen: Workout Execution (Active Workout on current day, or View-Only Preview on other days)
   return (
     <div className="exlib-container" style={{ padding: '24px 20px', paddingBottom: 100 }}>
       {/* Top Bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-        <button className="workout-back-btn" onClick={onClose} style={{ margin: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <button 
+          className="workout-back-btn" 
+          onClick={() => {
+            if (!isCurrentDayWorkout) {
+              setScreen('select_day');
+            } else {
+              onClose();
+            }
+          }} 
+          style={{ margin: 0 }}
+        >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          <span>Quit</span>
+          <span>{isCurrentDayWorkout ? 'Quit' : 'Back'}</span>
         </button>
 
-        <span style={{ fontSize: 16, fontWeight: 700, color: '#1F2937' }}>
-          {selectedDay?.day_name || selectedDay?.name || 'Workout'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#1F2937' }}>
+            {selectedDay?.day_name || selectedDay?.name || 'Workout'}
+          </span>
+          {!isCurrentDayWorkout && (
+            <span style={{ 
+              fontSize: 11, 
+              fontWeight: 700, 
+              backgroundColor: '#F3F4F6', 
+              color: '#4B5563', 
+              padding: '3px 8px', 
+              borderRadius: 8,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase'
+            }}>
+              View Only
+            </span>
+          )}
+        </div>
 
-        <button 
-          onClick={handleFinishWorkout}
+        {isCurrentDayWorkout ? (
+          <button 
+            onClick={handleFinishWorkout}
+            style={{
+              backgroundColor: '#5C8D89',
+              color: '#FFF',
+              border: 'none',
+              borderRadius: 20,
+              padding: '8px 20px',
+              fontWeight: 650,
+              fontSize: 14,
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(92, 141, 137, 0.3)',
+            }}
+          >
+            Finish
+          </button>
+        ) : (
+          <div style={{ width: 68 }} />
+        )}
+      </div>
+
+      {/* Info Banner when in View-Only Preview Mode */}
+      {!isCurrentDayWorkout && (
+        <div 
           style={{
-            backgroundColor: '#5C8D89',
-            color: '#FFF',
-            border: 'none',
-            borderRadius: 20,
-            padding: '8px 20px',
-            fontWeight: 650,
-            fontSize: 14,
-            cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(92, 141, 137, 0.3)',
+            backgroundColor: '#F8FAF9',
+            border: '1px solid #E6ECEB',
+            borderRadius: 16,
+            padding: '12px 16px',
+            marginBottom: 20,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
           }}
         >
-          Finish
-        </button>
-      </div>
+          <div style={{ color: '#5C8D89', flexShrink: 0 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+          </div>
+          <p style={{ fontSize: 13, color: '#4B5563', margin: 0, lineHeight: 1.4 }}>
+            Previewing exercises for <strong>{selectedDay?.day_name || selectedDay?.name}</strong>. Logging data is only enabled when it's that exact workout day.
+          </p>
+        </div>
+      )}
 
       {groupedExercises.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 20px', color: '#6B7280' }}>
@@ -555,7 +639,7 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {groupedExercises.map((group) => {
-            const isExpanded = expandedMuscles[group.muscle] ?? false;
+            const isExpanded = expandedMuscles[group.muscle] ?? true;
 
             return (
               <div key={group.muscle} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -606,15 +690,25 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
                 {isExpanded && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingLeft: 4, paddingRight: 4, animation: 'fadeInUp 200ms ease-out' }}>
                     {group.items.map((exItem) => (
-                      <ExerciseWorkoutItem
-                        key={exItem.id}
-                        exerciseItem={exItem}
-                        workoutLogId={workoutLogId}
-                        savedSetsMap={savedSetsMap}
-                        getLocationClass={getLocationClass}
-                        getDifficultyClass={getDifficultyClass}
-                        onOpenDetail={(name) => setSelectedDetailExerciseName(name)}
-                      />
+                      isCurrentDayWorkout ? (
+                        <ExerciseWorkoutItem
+                          key={exItem.id}
+                          exerciseItem={exItem}
+                          workoutLogId={workoutLogId}
+                          savedSetsMap={savedSetsMap}
+                          getLocationClass={getLocationClass}
+                          getDifficultyClass={getDifficultyClass}
+                          onOpenDetail={(name) => setSelectedDetailExerciseName(name)}
+                        />
+                      ) : (
+                        <ExerciseReadOnlyCard
+                          key={exItem.id}
+                          exerciseItem={exItem}
+                          getLocationClass={getLocationClass}
+                          getDifficultyClass={getDifficultyClass}
+                          onOpenDetail={(name) => setSelectedDetailExerciseName(name)}
+                        />
+                      )
                     ))}
                   </div>
                 )}
@@ -622,18 +716,6 @@ export const WorkoutExecutionScreen: React.FC<WorkoutExecutionScreenProps> = ({
             );
           })}
         </div>
-      )}
-
-      {showDeleteModal && (
-        <DeleteTemplateModal
-          templateId={templateId}
-          onClose={() => setShowDeleteModal(false)}
-          onDeleted={() => {
-            setShowDeleteModal(false);
-            if (onDeleteTemplate) onDeleteTemplate();
-            else onClose();
-          }}
-        />
       )}
     </div>
   );
@@ -1213,3 +1295,109 @@ const CompactSetCard: React.FC<{
     </div>
   );
 };
+
+// ==========================================
+// EXERCISE READ-ONLY PREVIEW CARD (VIEW ONLY)
+// ==========================================
+const ExerciseReadOnlyCard: React.FC<{
+  exerciseItem: UserWorkoutExercise;
+  getLocationClass: (loc?: string) => string;
+  getDifficultyClass: (diff?: string) => string;
+  onOpenDetail: (name: string) => void;
+}> = ({ exerciseItem, getLocationClass, getDifficultyClass, onOpenDetail }) => {
+  const ex = exerciseItem.exercise;
+  const exName = ex?.exercise_name || ex?.name || 'Exercise';
+  const isTimer = ex?.tracking_type === 'timer';
+  const targetSets = exerciseItem.target_sets || 3;
+  const targetRepsOrTime = isTimer
+    ? `${exerciseItem.target_time_seconds || 60}s`
+    : `${exerciseItem.target_reps || 10} reps`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Exercise Card Header & Info */}
+      <div
+        className="exlib-ex-card"
+        style={{ cursor: 'pointer', margin: 0 }}
+        onClick={() => onOpenDetail(exName)}
+      >
+        <div className="exlib-ex-header">
+          <h3 className="exlib-ex-name">{exName}</h3>
+          {ex?.difficulty && (
+            <span className={`exlib-diff-pill ${getDifficultyClass(ex.difficulty)}`}>
+              {ex.difficulty}
+            </span>
+          )}
+        </div>
+
+        {/* Tags */}
+        <div className="exlib-ex-tags">
+          {ex?.workout_location && (
+            <span className={`exlib-tag ${getLocationClass(ex.workout_location)}`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+              {ex.workout_location}
+            </span>
+          )}
+
+          {ex?.equipment_required && (
+            <span className="exlib-tag">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 12h12M4 8v8M20 8v8" />
+              </svg>
+              {ex.equipment_required}
+            </span>
+          )}
+        </div>
+
+        {/* Target Muscles */}
+        {ex?.primary_muscles && ex.primary_muscles.length > 0 && (
+          <p className="exlib-ex-muscles" style={{ margin: '12px 0 0' }}>
+            <strong style={{ color: '#1F2937' }}>{ex.primary_muscles.join(', ')}</strong>
+            {ex.secondary_muscles &&
+            ex.secondary_muscles.length > 0 &&
+            ex.secondary_muscles[0] !== 'None' &&
+            ex.secondary_muscles[0] !== ''
+              ? ` • ${ex.secondary_muscles.join(', ')}`
+              : ''}
+          </p>
+        )}
+
+        {/* Clean Read-Only Target Summary */}
+        <div
+          style={{
+            marginTop: 14,
+            paddingTop: 12,
+            borderTop: '1px solid #F3F4F6',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 8,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#5C8D89' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span style={{ fontSize: 13, fontWeight: 650, color: '#1F2937' }}>
+              Target: {targetSets} {targetSets === 1 ? 'Set' : 'Sets'} × {targetRepsOrTime}
+            </span>
+            {exerciseItem.default_weight_kg ? (
+              <span style={{ fontSize: 12, color: '#6B7280' }}>
+                ({exerciseItem.default_weight_kg} kg)
+              </span>
+            ) : null}
+          </div>
+
+          <span style={{ fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' }}>
+            Tap card for details
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+

@@ -31,6 +31,10 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
   const percent = goal > 0 ? Math.min(animatedCurrent / goal, 1) : 0;
   const offset = circumference - percent * circumference;
 
+  const hasOverflow = goal > 0 && animatedCurrent > goal;
+  const overflowPercent = hasOverflow ? Math.min((animatedCurrent - goal) / goal, 1) : 0;
+  const overflowOffset = circumference - overflowPercent * circumference;
+
   // Count-up animation
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -88,6 +92,16 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
             strokeDashoffset={mounted ? offset : circumference}
             style={color ? { stroke: color } : undefined}
           />
+          {hasOverflow && (
+            <circle
+              className="hd-ring-overflow"
+              cx={cx}
+              cy={cy}
+              r={radius}
+              strokeDasharray={circumference}
+              strokeDashoffset={mounted ? overflowOffset : circumference}
+            />
+          )}
         </svg>
         <div className="hd-ring-center">
           <span className="hd-ring-value">{animatedCurrent}</span>

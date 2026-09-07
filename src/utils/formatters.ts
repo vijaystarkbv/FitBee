@@ -1,3 +1,5 @@
+import { clock } from '../services/clock';
+
 /**
  * Formats a number with standard thousand separators
  */
@@ -15,10 +17,10 @@ export function capitalize(str: string): string {
 }
 
 /**
- * Returns YYYY-MM-DD string format
+ * Returns YYYY-MM-DD string format using the centralized application clock
  */
 export function getTodayDateString(): string {
-  const today = new Date();
+  const today = clock.now();
   return today.toISOString().split('T')[0];
 }
 

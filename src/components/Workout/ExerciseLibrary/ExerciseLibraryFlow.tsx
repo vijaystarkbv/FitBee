@@ -39,6 +39,7 @@ interface ExerciseLibraryFlowProps {
   onSelectMultipleForTemplate?: (exerciseNames: string[]) => void;
   initialSelectedExercises?: string[];
   otherDaysExercises?: Record<string, string[]>;
+  maxSelection?: number;
 }
 
 export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({ 
@@ -47,7 +48,8 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({
   onSelectForTemplate,
   onSelectMultipleForTemplate,
   initialSelectedExercises = [],
-  otherDaysExercises = {}
+  otherDaysExercises = {},
+  maxSelection,
 }) => {
   const [screen, setScreen] = useState<ScreenStep>('main');
   const [previousScreen, setPreviousScreen] = useState<ScreenStep>('main');
@@ -170,11 +172,16 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({
   };
 
   const handleToggleSelectExercise = (exerciseName: string) => {
-    setSelectedExercises((prev) =>
-      prev.includes(exerciseName)
-        ? prev.filter((name) => name !== exerciseName)
-        : [...prev, exerciseName]
-    );
+    setSelectedExercises((prev) => {
+      if (prev.includes(exerciseName)) {
+        return prev.filter((name) => name !== exerciseName);
+      }
+      if (maxSelection && prev.length >= maxSelection) {
+        alert(`You can select a maximum of ${maxSelection} exercises.`);
+        return prev;
+      }
+      return [...prev, exerciseName];
+    });
   };
 
   // Update live suggestions when typing (debounced)
@@ -454,7 +461,9 @@ export const ExerciseLibraryFlow: React.FC<ExerciseLibraryFlowProps> = ({
               </svg>
             </div>
             <span>
-              {selectedExercises.length} {selectedExercises.length === 1 ? 'Exercise Selected' : 'Exercises Selected'}
+              {maxSelection
+                ? `${selectedExercises.length} / ${maxSelection} Exercises Selected`
+                : `${selectedExercises.length} ${selectedExercises.length === 1 ? 'Exercise Selected' : 'Exercises Selected'}`}
             </span>
           </div>
 

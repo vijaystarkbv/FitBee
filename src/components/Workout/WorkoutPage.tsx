@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ExerciseLibraryFlow } from './ExerciseLibrary/ExerciseLibraryFlow';
 import { CreateTemplateFlow } from './CreateTemplateFlow';
 import { WorkoutExecutionScreen } from './WorkoutExecutionScreen';
-import { DeleteTemplateModal } from './DeleteTemplateModal';
+import { ExtraWorkoutFlow } from './ExtraWorkoutFlow';
+import { DailyWalkingCard } from './DailyWalkingCard';
 import { supabase } from '../../services/supabaseClient';
-import { WorkoutTemplate, WorkoutTemplateDay } from '../../types/database.types';
+import { WorkoutTemplate, WorkoutTemplateDay, Profile } from '../../types/database.types';
 import './ExerciseLibrary/exerciseLibrary.css';
 
 interface WorkoutPageProps {
+  profile?: Profile | null;
   onBackToHome?: () => void;
 }
 
@@ -15,13 +17,14 @@ interface TemplateWithDays extends WorkoutTemplate {
   workout_template_days?: WorkoutTemplateDay[];
 }
 
-export const WorkoutPage: React.FC<WorkoutPageProps> = ({ onBackToHome }) => {
+export const WorkoutPage: React.FC<WorkoutPageProps> = ({ profile: propProfile, onBackToHome }) => {
+  const [profile, setProfile] = useState<Profile | null>(propProfile || null);
   const [inLibrary, setInLibrary] = useState(false);
+  const [isExtraWorkout, setIsExtraWorkout] = useState(false);
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
   
   const [templates, setTemplates] = useState<TemplateWithDays[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +48,15 @@ export const WorkoutPage: React.FC<WorkoutPageProps> = ({ onBackToHome }) => {
 
       if (error) {
         console.error('Error fetching templates:', error);
-        return;
+      }
+
+      if (!profile) {
+        const { data: profData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        if (profData) setProfile(profData as Profile);
       }
 
       setTemplates(data || []);
@@ -54,7 +65,7 @@ export const WorkoutPage: React.FC<WorkoutPageProps> = ({ onBackToHome }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [profile]);
 
   useEffect(() => {
     fetchTemplates();
@@ -62,6 +73,18 @@ export const WorkoutPage: React.FC<WorkoutPageProps> = ({ onBackToHome }) => {
 
   if (inLibrary) {
     return <ExerciseLibraryFlow onBackToWorkout={() => setInLibrary(false)} />;
+  }
+
+  if (isExtraWorkout) {
+    return (
+      <ExtraWorkoutFlow
+        onBack={() => setIsExtraWorkout(false)}
+        onComplete={() => {
+          setIsExtraWorkout(false);
+          fetchTemplates();
+        }}
+      />
+    );
   }
 
   if (isCreatingTemplate || editingTemplateId) {
@@ -89,10 +112,6 @@ export const WorkoutPage: React.FC<WorkoutPageProps> = ({ onBackToHome }) => {
         onEditTemplate={(tmplId) => {
           setActiveTemplateId(null);
           setEditingTemplateId(tmplId);
-        }}
-        onDeleteTemplate={() => {
-          setActiveTemplateId(null);
-          fetchTemplates();
         }}
       />
     );
@@ -142,6 +161,35 @@ export const WorkoutPage: React.FC<WorkoutPageProps> = ({ onBackToHome }) => {
           </svg>
         </div>
       </div>
+
+      {/* Action Card: Extra Workout */}
+      <div
+        className="workout-entry-card"
+        onClick={() => setIsExtraWorkout(true)}
+        role="button"
+        tabIndex={0}
+        style={{ marginTop: 12 }}
+      >
+        <div className="workout-entry-icon" style={{ backgroundColor: '#EEF2FF', color: '#4F46E5' }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
+        </div>
+
+        <div style={{ flex: 1 }}>
+          <h2 className="workout-entry-title">Extra Workout</h2>
+          <p className="workout-entry-desc">Log a quick one-day session without modifying your routines.</p>
+        </div>
+
+        <div style={{ color: '#4F46E5' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </div>
+      </div>
+
+      {/* ── Daily Walking Activity Tracking ── */}
+      <DailyWalkingCard profile={profile} />
 
       <div style={{ marginTop: 32, marginBottom: 16 }}>
         <h3 style={{ fontSize: 18, fontWeight: 600, color: '#1F2937' }}>My Templates</h3>
@@ -246,31 +294,6 @@ export const WorkoutPage: React.FC<WorkoutPageProps> = ({ onBackToHome }) => {
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                       Edit Template
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        setDeletingTemplateId(template.id);
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 16px',
-                        textAlign: 'left',
-                        border: 'none',
-                        backgroundColor: 'transparent',
-                        color: '#EF4444',
-                        fontSize: 14,
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                      }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                      Delete Template
-                    </button>
                   </div>
                 )}
               </div>
@@ -279,30 +302,20 @@ export const WorkoutPage: React.FC<WorkoutPageProps> = ({ onBackToHome }) => {
         </div>
       )}
 
-      {/* Create New Template Card */}
-      <div className="workout-entry-card" style={{ border: '2px dashed #E5E7EB', backgroundColor: 'transparent', boxShadow: 'none' }} onClick={() => setIsCreatingTemplate(true)} role="button" tabIndex={0}>
-        <div className="workout-entry-icon" style={{ backgroundColor: '#F3F4F6', color: '#6B7280' }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </div>
+      {/* Create New Template Card - Only shown when user has no templates */}
+      {templates.length === 0 && (
+        <div className="workout-entry-card" style={{ border: '2px dashed #E5E7EB', backgroundColor: 'transparent', boxShadow: 'none' }} onClick={() => setIsCreatingTemplate(true)} role="button" tabIndex={0}>
+          <div className="workout-entry-icon" style={{ backgroundColor: '#F3F4F6', color: '#6B7280' }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </div>
 
-        <div style={{ flex: 1 }}>
-          <h2 className="workout-entry-title" style={{ color: '#4B5563' }}>Create New Template</h2>
-          <p className="workout-entry-desc" style={{ color: '#9CA3AF' }}>Build a custom workout routine</p>
+          <div style={{ flex: 1 }}>
+            <h2 className="workout-entry-title" style={{ color: '#4B5563' }}>Create New Template</h2>
+            <p className="workout-entry-desc" style={{ color: '#9CA3AF' }}>Build a custom workout routine</p>
+          </div>
         </div>
-      </div>
-
-      {/* Delete Template 2-Step Confirmation Modal */}
-      {deletingTemplateId && (
-        <DeleteTemplateModal
-          templateId={deletingTemplateId}
-          onClose={() => setDeletingTemplateId(null)}
-          onDeleted={() => {
-            setDeletingTemplateId(null);
-            fetchTemplates();
-          }}
-        />
       )}
     </div>
   );

@@ -33,6 +33,39 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
 
   // State for Add Exercise flow
   const [addingToDayId, setAddingToDayId] = useState<string | null>(null);
+  // State for Day View (viewing & managing a specific day's exercises)
+  const [selectedDayForEdit, setSelectedDayForEdit] = useState<WorkoutTemplateDay | null>(null);
+  // State for Add/Remove Days modal
+  const [showDaySelectorModal, setShowDaySelectorModal] = useState<boolean>(false);
+  const [tempSelectedDays, setTempSelectedDays] = useState<string[]>([]);
+  const [isSavingDays, setIsSavingDays] = useState<boolean>(false);
+
+  // State for inline renaming template
+  const [isEditingName, setIsEditingName] = useState<boolean>(false);
+  const [editedName, setEditedName] = useState<string>('');
+  const [isSavingName, setIsSavingName] = useState<boolean>(false);
+
+  const handleSaveTemplateName = async () => {
+    if (!templateId || !editedName.trim()) {
+      setIsEditingName(false);
+      return;
+    }
+    setIsSavingName(true);
+    try {
+      const trimmed = editedName.trim();
+      const { error } = await supabase
+        .from('workout_templates')
+        .update({ name: trimmed })
+        .eq('id', templateId);
+      if (error) throw error;
+      setTemplateName(trimmed);
+      setIsEditingName(false);
+    } catch (err) {
+      console.error('Failed to update template name:', err);
+    } finally {
+      setIsSavingName(false);
+    }
+  };
 
   // If editing an existing template, load its data
   useEffect(() => {
@@ -49,7 +82,7 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
         if (tmplErr) throw tmplErr;
 
         setTemplateName(tmpl.name);
-        const dayList = tmpl.workout_template_days || [];
+        const dayList = (tmpl.workout_template_days || []).sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0));
         setDays(dayList);
         setSelectedDays(dayList.map((d: any) => d.day_name || d.name));
         setTemplateId(editTemplateId);
@@ -151,6 +184,85 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
     }
   }, [step, templateId]);
 
+  // Remove an individual exercise from a template day
+  const handleRemoveExerciseFromDay = async (exerciseTemplateId: string) => {
+    try {
+      await supabase
+        .from('workout_template_exercises')
+        .delete()
+        .eq('id', exerciseTemplateId);
+
+      if (templateId) {
+        await loadExercisesForTemplate(templateId);
+      }
+    } catch (err) {
+      console.error('Failed to remove exercise from day:', err);
+    }
+  };
+
+  // Save changes from Add/Remove Days modal
+  const handleSaveAddRemoveDays = async () => {
+    if (!templateId) return;
+    setIsSavingDays(true);
+    try {
+      const currentDayNames = days.map(d => d.day_name || d.name || '');
+      const addedNames = tempSelectedDays.filter(name => !currentDayNames.includes(name));
+      const removedDays = days.filter(d => !tempSelectedDays.includes(d.day_name || d.name || ''));
+
+      // 1. Remove deselected days
+      if (removedDays.length > 0) {
+        const removedIds = removedDays.map(d => d.id);
+        await supabase
+          .from('workout_template_exercises')
+          .delete()
+          .in('template_day_id', removedIds);
+
+        await supabase
+          .from('workout_template_days')
+          .delete()
+          .in('id', removedIds);
+      }
+
+      // 2. Add newly selected days
+      if (addedNames.length > 0) {
+        let maxOrder = days.length > 0 ? Math.max(...days.map(d => d.order_index ?? 0)) : 0;
+        const toInsert = addedNames.map((dayName, idx) => ({
+          template_id: templateId,
+          day_name: dayName,
+          order_index: maxOrder + 1 + idx,
+          is_enabled: true,
+        }));
+
+        await supabase
+          .from('workout_template_days')
+          .insert(toInsert);
+      }
+
+      // 3. Reload days and exercises
+      const { data: updatedDays } = await supabase
+        .from('workout_template_days')
+        .select('*')
+        .eq('template_id', templateId)
+        .order('order_index', { ascending: true });
+
+      const sortedDays = (updatedDays || []).sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0));
+      setDays(sortedDays);
+      setSelectedDays(sortedDays.map((d: any) => d.day_name || d.name || ''));
+      await loadExercisesForTemplate(templateId);
+
+      // If the currently edited day was removed, exit day view
+      if (selectedDayForEdit && !tempSelectedDays.includes(selectedDayForEdit.day_name || selectedDayForEdit.name || '')) {
+        setSelectedDayForEdit(null);
+      }
+
+      setShowDaySelectorModal(false);
+    } catch (err) {
+      console.error('Failed to update template days:', err);
+      alert('Failed to update days. Please try again.');
+    } finally {
+      setIsSavingDays(false);
+    }
+  };
 
   const handleSelectMultipleExercises = async (exerciseNames: string[]) => {
     if (!addingToDayId || !templateId) return;
@@ -159,16 +271,16 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
       // 1. Existing exercises for this day
       const currentDayExercises = exercises.filter(e => e.template_day_id === addingToDayId);
       const existingNames = currentDayExercises
-        .map(e => e.exercise?.exercise_name || e.exercise?.name)
+        .map(e => (e.exercise?.exercise_name || e.exercise?.name || '').trim())
         .filter((n): n is string => Boolean(n));
 
       // Determine additions and removals
       const toRemove = currentDayExercises.filter(e => {
-        const name = e.exercise?.exercise_name || e.exercise?.name;
-        return name && !exerciseNames.includes(name);
+        const name = (e.exercise?.exercise_name || e.exercise?.name || '').trim().toLowerCase();
+        return name && !exerciseNames.some(en => en.trim().toLowerCase() === name);
       });
 
-      const toAddNames = exerciseNames.filter(n => !existingNames.includes(n));
+      const toAddNames = exerciseNames.filter(n => !existingNames.some(en => en.toLowerCase() === n.trim().toLowerCase()));
 
       // Remove unselected exercises for this day
       if (toRemove.length > 0) {
@@ -179,24 +291,41 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
           .in('id', removeIds);
       }
 
-      // Add newly selected exercises
-      if (toAddNames.length > 0) {
+      // Add newly selected exercises (deduplicating to avoid multiple rows from master_exercises)
+      const uniqueToAdd = Array.from(new Set(toAddNames.map(n => n.trim()).filter(Boolean)));
+      if (uniqueToAdd.length > 0) {
         const { data: masterExList, error: findError } = await supabase
           .from('master_exercises')
           .select('id, exercise_name, tracking_type')
-          .in('exercise_name', toAddNames);
+          .in('exercise_name', uniqueToAdd);
 
         if (findError) throw findError;
 
+        // Index master exercises by lowercase name to ensure 1 DB row per exercise
+        const exMap = new Map<string, any>();
+        (masterExList || []).forEach((ex) => {
+          const key = (ex.exercise_name || '').trim().toLowerCase();
+          if (key && !exMap.has(key)) {
+            exMap.set(key, ex);
+          }
+        });
+
         let startIndex = currentDayExercises.length;
-        const exercisesToInsert = (masterExList || []).map((masterEx, idx) => ({
-          template_day_id: addingToDayId,
-          exercise_id: masterEx.id,
-          order_index: startIndex + idx,
-          target_sets: 3,
-          target_reps: masterEx.tracking_type === 'reps' ? 10 : null,
-          target_time_seconds: masterEx.tracking_type === 'timer' ? 60 : null,
-        }));
+        const exercisesToInsert: any[] = [];
+
+        uniqueToAdd.forEach((name) => {
+          const masterEx = exMap.get(name.toLowerCase());
+          if (masterEx) {
+            exercisesToInsert.push({
+              template_day_id: addingToDayId,
+              exercise_id: masterEx.id,
+              order_index: startIndex++,
+              target_sets: 3,
+              target_reps: masterEx.tracking_type === 'reps' ? 10 : null,
+              target_time_seconds: masterEx.tracking_type === 'timer' ? 60 : null,
+            });
+          }
+        });
 
         if (exercisesToInsert.length > 0) {
           const { error: insertError } = await supabase
@@ -477,72 +606,52 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
         </div>
       )}
 
-      {step === 'build' && (
+      {step === 'build' && selectedDayForEdit && (
         <div style={{ animation: 'fadeInUp 0.3s ease-out' }}>
-          {/* Top App Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#1F2937', margin: 0 }}>{templateName}</h1>
-            <button 
-              onClick={onComplete}
-              style={{
-                backgroundColor: '#5C8D89',
-                color: '#FFF',
-                border: 'none',
-                borderRadius: 20,
-                padding: '8px 20px',
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: 'pointer'
-              }}
-            >
-              Finish
-            </button>
-          </div>
+          {/* Day Detail Header */}
+          <button
+            className="workout-back-btn"
+            onClick={() => setSelectedDayForEdit(null)}
+            style={{ marginBottom: 24 }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            <span>Back to Routine</span>
+          </button>
 
-          {/* Individual Day Cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {days.sort((a, b) => a.order_index - b.order_index).map(day => {
-              const dayExercises = exercises.filter(e => e.template_day_id === day.id);
-              const isAssigned = dayExercises.length > 0;
-              
-              return (
-                <div 
-                  key={day.id} 
-                  style={{ 
-                    backgroundColor: '#FFFFFF', 
-                    borderRadius: 24, 
-                    height: 76,
-                    padding: '20px 24px', 
-                    border: '1px solid #E8E8E6',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.04)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  {/* Left: Day Name */}
-                  <span style={{ fontSize: 18, fontWeight: 600, color: '#1F2937' }}>
-                    {day.day_name}
-                  </span>
+          {(() => {
+            const currentDayExercises = exercises.filter(e => e.template_day_id === selectedDayForEdit.id);
+            const dayDisplayName = selectedDayForEdit.day_name || selectedDayForEdit.name || 'Workout Day';
 
-                  {/* Right: Circular Action Button (+ or ✓) */}
+            return (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                  <div>
+                    <h1 style={{ fontSize: 26, fontWeight: 700, color: '#1F2937', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+                      {dayDisplayName}
+                    </h1>
+                    <p style={{ fontSize: 14, color: '#6B7280', margin: 0 }}>
+                      {currentDayExercises.length} {currentDayExercises.length === 1 ? 'exercise' : 'exercises'} configured
+                    </p>
+                  </div>
+
                   <button
-                    onClick={() => setAddingToDayId(day.id)}
-                    aria-label={isAssigned ? `${day.day_name} workout completed` : `Add workout for ${day.day_name}`}
+                    onClick={() => setAddingToDayId(selectedDayForEdit.id)}
                     style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: '50%',
-                      backgroundColor: isAssigned ? '#22C55E' : '#5C8D89',
+                      backgroundColor: '#5C8D89',
                       color: '#FFFFFF',
                       border: 'none',
+                      borderRadius: 20,
+                      padding: '9px 18px',
+                      fontWeight: 650,
+                      fontSize: 14,
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      boxShadow: isAssigned ? '0 4px 14px rgba(34, 197, 94, 0.3)' : '0 4px 14px rgba(92, 141, 137, 0.3)',
-                      transition: 'transform 200ms ease, background-color 200ms ease, box-shadow 200ms ease',
+                      gap: 6,
+                      boxShadow: '0 4px 14px rgba(92, 141, 137, 0.3)',
+                      transition: 'transform 150ms ease, box-shadow 150ms ease',
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = 'translateY(-1px)';
@@ -550,28 +659,464 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = 'none';
                     }}
-                    onMouseDown={(e) => {
-                      e.currentTarget.style.transform = 'scale(0.97)';
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    <span>Add Exercise</span>
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 650, color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Existing Exercises
+                  </span>
+                </div>
+
+                {/* Exercises List for Selected Day */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 32 }}>
+                  {currentDayExercises.length === 0 ? (
+                    <div
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: 24,
+                        padding: '44px 24px',
+                        border: '1px solid #E8E8E6',
+                        textAlign: 'center',
+                        color: '#6B7280',
+                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.04)',
+                      }}
+                    >
+                      <div style={{ width: 54, height: 54, borderRadius: '50%', backgroundColor: 'rgba(92, 141, 137, 0.1)', color: '#5C8D89', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                          <line x1="16" y1="2" x2="16" y2="6" />
+                          <line x1="8" y1="2" x2="8" y2="6" />
+                          <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                      </div>
+                      <h3 style={{ fontSize: 17, fontWeight: 650, color: '#1F2937', margin: '0 0 6px' }}>
+                        No exercises for {dayDisplayName} yet
+                      </h3>
+                      <p style={{ fontSize: 14, color: '#6B7280', margin: '0 0 20px', maxWidth: 300, marginLeft: 'auto', marginRight: 'auto' }}>
+                        Add exercises from the Exercise Library to build your routine for this day.
+                      </p>
+                      <button
+                        onClick={() => setAddingToDayId(selectedDayForEdit.id)}
+                        style={{
+                          backgroundColor: '#5C8D89',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: 16,
+                          padding: '10px 22px',
+                          fontWeight: 650,
+                          fontSize: 14,
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 14px rgba(92, 141, 137, 0.25)',
+                        }}
+                      >
+                        + Add Exercises
+                      </button>
+                    </div>
+                  ) : (
+                    currentDayExercises.map((exItem) => {
+                      const ex = exItem.exercise;
+                      const exName = ex?.exercise_name || ex?.name || 'Exercise';
+                      const pMuscle = ex?.primary_muscles?.[0] || 'General';
+                      const equip = ex?.equipment_required || 'Bodyweight';
+
+                      return (
+                        <div
+                          key={exItem.id}
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            borderRadius: 20,
+                            padding: '16px 20px',
+                            border: '1px solid #E8E8E6',
+                            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <h4 style={{ fontSize: 16, fontWeight: 650, color: '#1F2937', margin: '0 0 6px' }}>
+                              {exName}
+                            </h4>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 12, fontWeight: 500, color: '#5C8D89', backgroundColor: 'rgba(92, 141, 137, 0.1)', padding: '2px 8px', borderRadius: 8 }}>
+                                {pMuscle}
+                              </span>
+                              <span style={{ fontSize: 12, color: '#6B7280' }}>
+                                {equip}
+                              </span>
+                              <span style={{ fontSize: 12, color: '#D1D5DB' }}>•</span>
+                              <span style={{ fontSize: 12, fontWeight: 500, color: '#4B5563' }}>
+                                {exItem.target_sets || 3} sets × {exItem.target_reps ? `${exItem.target_reps} reps` : `${exItem.target_time_seconds || 60}s`}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleRemoveExerciseFromDay(exItem.id)}
+                            title={`Remove ${exName}`}
+                            aria-label={`Remove ${exName}`}
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: '50%',
+                              border: 'none',
+                              backgroundColor: '#FEF2F2',
+                              color: '#EF4444',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              transition: 'background-color 150ms ease',
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {step === 'build' && !selectedDayForEdit && (
+        <div style={{ animation: 'fadeInUp 0.3s ease-out' }}>
+          {/* Top App Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div style={{ flex: 1, marginRight: 16 }}>
+              {isEditingName ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <input
+                    type="text"
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveTemplateName();
+                      if (e.key === 'Escape') setIsEditingName(false);
                     }}
-                    onMouseUp={(e) => {
-                      e.currentTarget.style.transform = 'none';
+                    autoFocus
+                    placeholder="Template name"
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: '#1F2937',
+                      border: '1.5px solid #5C8D89',
+                      borderRadius: 10,
+                      padding: '4px 10px',
+                      outline: 'none',
+                      width: '100%',
+                      maxWidth: 260,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveTemplateName}
+                    disabled={isSavingName}
+                    style={{
+                      backgroundColor: '#5C8D89',
+                      color: '#FFF',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '6px 12px',
+                      fontSize: 13,
+                      fontWeight: 650,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    {isAssigned ? (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'fadeInScale 200ms ease-out' }}>
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    ) : (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                      </svg>
-                    )}
+                    {isSavingName ? 'Saving...' : 'Save'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingName(false)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#6B7280',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 2px' }}>
+                  <h1 style={{ fontSize: 24, fontWeight: 700, color: '#1F2937', margin: 0 }}>{templateName}</h1>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditedName(templateName);
+                      setIsEditingName(true);
+                    }}
+                    title="Rename Template"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 4,
+                      cursor: 'pointer',
+                      color: '#6B7280',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 6,
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9"/>
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                  </button>
+                </div>
+              )}
+              <p style={{ fontSize: 14, color: '#6B7280', margin: 0 }}>Click a day to view or edit exercises.</p>
+            </div>
+            <button 
+              onClick={onComplete}
+              style={{
+                backgroundColor: '#5C8D89',
+                color: '#FFF',
+                border: 'none',
+                borderRadius: 20,
+                padding: '8px 22px',
+                fontWeight: 650,
+                fontSize: 14,
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(92, 141, 137, 0.3)',
+              }}
+            >
+              Finish
+            </button>
+          </div>
+
+          {/* Subheader with Add/Remove Days Button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 650, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Scheduled Days ({days.length})
+            </span>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTempSelectedDays(days.map(d => d.day_name || d.name || ''));
+                setShowDaySelectorModal(true);
+              }}
+              style={{
+                backgroundColor: '#FFFFFF',
+                border: '1.5px solid #5C8D89',
+                color: '#5C8D89',
+                borderRadius: 16,
+                padding: '6px 14px',
+                fontSize: 13,
+                fontWeight: 650,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                transition: 'all 150ms ease',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span>Add / Remove Days</span>
+            </button>
+          </div>
+
+          {/* Individual Day Cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {days.sort((a, b) => a.order_index - b.order_index).map(day => {
+              const dayExercises = exercises.filter(e => e.template_day_id === day.id);
+              const isAssigned = dayExercises.length > 0;
+              
+              return (
+                <div 
+                  key={day.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedDayForEdit(day)}
+                  style={{ 
+                    backgroundColor: '#FFFFFF', 
+                    borderRadius: 22, 
+                    padding: '18px 22px', 
+                    border: '1px solid #E8E8E6',
+                    boxShadow: '0 6px 24px rgba(0, 0, 0, 0.03)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    boxSizing: 'border-box',
+                    cursor: 'pointer',
+                    transition: 'all 180ms ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#5C8D89';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#E8E8E6';
+                    e.currentTarget.style.transform = 'none';
+                  }}
+                >
+                  {/* Left: Day Name & Exercise Count */}
+                  <div>
+                    <h3 style={{ fontSize: 17, fontWeight: 650, color: '#1F2937', margin: '0 0 4px' }}>
+                      {day.day_name}
+                    </h3>
+                    <p style={{ fontSize: 13, color: isAssigned ? '#5C8D89' : '#9CA3AF', fontWeight: isAssigned ? 550 : 400, margin: 0 }}>
+                      {dayExercises.length} {dayExercises.length === 1 ? 'Exercise' : 'Exercises'}
+                    </p>
+                  </div>
+
+                  {/* Right: Badge & Chevron */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {isAssigned && (
+                      <span style={{ fontSize: 12, backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#16A34A', fontWeight: 600, padding: '3px 9px', borderRadius: 10 }}>
+                        Configured
+                      </span>
+                    )}
+                    <div style={{ color: '#9CA3AF' }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
               );
             })}
           </div>
+
+          {/* Add/Remove Days Modal */}
+          {showDaySelectorModal && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 1000,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20,
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 24,
+                  padding: '28px 24px',
+                  maxWidth: 440,
+                  width: '100%',
+                  boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15)',
+                  border: '1px solid #E8E8E6',
+                  animation: 'scaleUp 200ms ease-out',
+                }}
+              >
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1F2937', margin: '0 0 6px' }}>
+                  Add / Remove Days
+                </h2>
+                <p style={{ fontSize: 14, color: '#6B7280', margin: '0 0 24px', lineHeight: 1.4 }}>
+                  Select the weekdays you want in your routine. Existing exercises on retained days will remain intact.
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 28 }}>
+                  {DAYS_OF_WEEK.map(day => {
+                    const isSelected = tempSelectedDays.includes(day.id);
+                    return (
+                      <button
+                        key={day.id}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            if (tempSelectedDays.length <= 1) {
+                              alert('You must have at least one day in your routine.');
+                              return;
+                            }
+                            setTempSelectedDays(prev => prev.filter(d => d !== day.id));
+                          } else {
+                            setTempSelectedDays(prev => [...prev, day.id]);
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          height: 52,
+                          borderRadius: 14,
+                          border: `1.5px solid ${isSelected ? '#5C8D89' : '#E8E8E6'}`,
+                          backgroundColor: isSelected ? 'rgba(92, 141, 137, 0.12)' : '#FFFFFF',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          transition: 'all 150ms ease',
+                          transform: isSelected ? 'scale(1.04)' : 'scale(1)',
+                        }}
+                      >
+                        <span style={{ fontSize: 12, fontWeight: 700, color: isSelected ? '#5C8D89' : '#4B5563' }}>
+                          {day.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDaySelectorModal(false)}
+                    style={{
+                      flex: 1,
+                      height: 48,
+                      borderRadius: 16,
+                      border: '1.5px solid #E5E7EB',
+                      backgroundColor: '#FFFFFF',
+                      color: '#4B5563',
+                      fontSize: 15,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingDays}
+                    onClick={handleSaveAddRemoveDays}
+                    style={{
+                      flex: 1,
+                      height: 48,
+                      borderRadius: 16,
+                      border: 'none',
+                      backgroundColor: '#5C8D89',
+                      color: '#FFFFFF',
+                      fontSize: 15,
+                      fontWeight: 650,
+                      cursor: isSavingDays ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 4px 14px rgba(92, 141, 137, 0.3)',
+                    }}
+                  >
+                    {isSavingDays ? 'Saving...' : 'Save Days'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

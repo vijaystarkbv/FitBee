@@ -7,6 +7,7 @@ export interface GeminiMacroEstimationResponse {
   fat: number;
   recommended_template_name: string;
   explanation_summary?: string;
+  tdee?: number;
 }
 
 export interface GeminiParsedMealItem {

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36">
+  <defs>
+    <linearGradient id="fitbee-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5C8D89" />
+      <stop offset="100%" stop-color="#89B0AE" />
+    </linearGradient>
+  </defs>
+  <rect width="36" height="36" rx="10" fill="url(#fitbee-grad)" />
+  <g transform="translate(6, 6)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+    <path d="M2 17l10 5 10-5" />
+    <path d="M2 12l10 5 10-5" />
+  </g>
+</svg>

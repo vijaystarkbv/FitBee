@@ -31,6 +31,9 @@ export interface Profile {
   height_unit: HeightUnit;
   weight_unit: WeightUnit;
   onboarding_completed: boolean;
+  streak_freeze_count?: number | null;
+  frozen_dates?: string[] | null;
+  streak_milestones_awarded?: number | null;
 }
 
 export interface UserEquipment {
@@ -199,4 +202,118 @@ export interface ExerciseFavorite {
   user_id: string;
   exercise_id: string;
   created_at: string;
+}
+
+export type HabitType = 'CHECKLIST' | 'DURATION';
+
+export interface Habit {
+  id: string;
+  user_id: string;
+  name: string;
+  type: HabitType;
+  target_duration_seconds: number | null;
+  notifications_enabled: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HabitSession {
+  id: string;
+  user_id: string;
+  habit_id: string;
+  date: string; // YYYY-MM-DD
+  session_index: number;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  created_at: string;
+}
+
+export interface HabitLog {
+  id: string;
+  user_id: string;
+  habit_id: string;
+  date: string; // YYYY-MM-DD
+  is_completed: boolean;
+  target_duration_seconds: number | null;
+  actual_duration_seconds: number;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WalkingInputMode = 'steps' | 'distance';
+
+export interface DailyWalkingLog {
+  id: string;
+  user_id: string;
+  date: string; // YYYY-MM-DD
+  steps: number;
+  distance_km: number;
+  calories_burned: number;
+  input_mode: WalkingInputMode;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TargetVersionSource = 'onboarding' | 'gemini_recommendation' | 'manual_user_edit' | 'user_override' | 'system_invariant_repair' | 'system_recalculation';
+
+export interface NutritionTargetVersion {
+  id: string;
+  user_id: string;
+  effective_from: string; // ISO timestamp or YYYY-MM-DD
+  effective_to: string | null; // null for current active target
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  source: TargetVersionSource;
+  created_at: string;
+}
+
+export type ProgressUpdateAction =
+  | 'pending'
+  | 'accepted'
+  | 'rejected'
+  | 'manual_override'
+  | 'accepted_recommendation'
+  | 'kept_previous'
+  | 'customized';
+
+export interface NutritionProgressUpdate {
+  id: string;
+  user_id: string;
+  recorded_at: string; // ISO timestamp from clock.now()
+  weight_kg: number;
+  previous_weight_kg: number | null;
+  weight_change_kg: number | null;
+  days_since_last_update: number | null;
+  active_target_calories: number;
+  active_target_protein: number;
+  active_target_carbs: number;
+  active_target_fat: number;
+  goal: FitnessGoal;
+  expected_trend: string;
+  actual_trend: string;
+  fitbee_recommended_calories: number | null;
+  fitbee_recommended_protein: number | null;
+  fitbee_recommended_carbs: number | null;
+  fitbee_recommended_fat: number | null;
+  statement_ids: string[] | null;
+  user_action: ProgressUpdateAction;
+  user_selected_calories: number | null;
+  user_selected_protein: number | null;
+  user_selected_carbs: number | null;
+  user_selected_fat: number | null;
+  created_at: string;
+  // Component compatibility aliases
+  date?: string;
+  weight?: number;
+  previous_weight?: number;
+  target_calories_at_time?: number;
+  target_protein_at_time?: number;
+  target_carbs_at_time?: number;
+  target_fat_at_time?: number;
+  target_source_at_time?: string;
 }

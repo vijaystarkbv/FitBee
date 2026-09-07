@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+vite.config.ts.timestamp-*
 
 # Environment variables
 .env
@@ -32,3 +33,14 @@ __pycache__/
 # Local Blender working files
 Extra.blend
 Extra_In_Case_Everything_Dies.blend
+
+# Supabase CLI temporary files
+supabase/.temp/
+
+# Development scratch scripts & local tests
+scratch/
+
+# Logs & local caches
+*.log
+.cache/
+fitbee-files.txt

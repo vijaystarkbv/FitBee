@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type NavTab = 'home' | 'meal' | 'workout' | 'settings';
+export type NavTab = 'home' | 'meal' | 'workout' | 'settings' | 'habits';
 
 interface BottomNavProps {
   activeTab: NavTab;
@@ -11,20 +11,28 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onSelectTab }) 
   return (
     <nav className="hd-bottom-nav">
       <div className="hd-bottom-nav-inner">
-        {/* Today's Workout */}
+        {/* Home */}
         <button
-          className={`hd-nav-item${activeTab === 'workout' ? ' active' : ''}`}
-          onClick={() => onSelectTab('workout')}
+          className={`hd-nav-item${activeTab === 'home' ? ' active' : ''}`}
+          onClick={() => onSelectTab('home')}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6.5 6.5L17.5 17.5M6.5 17.5L17.5 6.5" opacity="0" />
-            <path d="M6 12h12" />
-            <path d="M4 8v8" />
-            <path d="M20 8v8" />
-            <path d="M2 10v4" />
-            <path d="M22 10v4" />
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
-          Workout
+          Home
+        </button>
+
+        {/* Habits */}
+        <button
+          className={`hd-nav-item${activeTab === 'habits' ? ' active' : ''}`}
+          onClick={() => onSelectTab('habits')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="9 12 11 14 15 9" />
+          </svg>
+          Habits
         </button>
 
         {/* Log Meal (FAB center) */}
@@ -36,6 +44,21 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onSelectTab }) 
             </svg>
           </div>
           Log Meal
+        </button>
+
+        {/* Workout */}
+        <button
+          className={`hd-nav-item${activeTab === 'workout' ? ' active' : ''}`}
+          onClick={() => onSelectTab('workout')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 12h12" />
+            <path d="M4 8v8" />
+            <path d="M20 8v8" />
+            <path d="M2 10v4" />
+            <path d="M22 10v4" />
+          </svg>
+          Workout
         </button>
 
         {/* Settings */}

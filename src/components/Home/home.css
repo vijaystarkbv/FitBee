@@ -161,10 +161,30 @@
   animation-delay: 120ms;
 }
 
+/* ── Streak section container (matches width & padding of hd-nutrition-card) ── */
+.hd-streak-section {
+  max-width: 520px;
+  margin: 20px auto 0;
+  padding: 0 24px;
+  animation: hdSlideUp 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 160ms;
+}
+
 @keyframes hdSlideUp {
   from {
     opacity: 0;
     transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -229,6 +249,14 @@
 .hd-ring-progress {
   fill: none;
   stroke: var(--hd-ring-progress);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hd-ring-overflow {
+  fill: none;
+  stroke: #D9773F;
   stroke-width: 7;
   stroke-linecap: round;
   transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -545,3 +573,187 @@
     font-size: 14px;
   }
 }
+
+/* ── Animation Keyframes (DESIGN_THEME.md) ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fitbeeTabEntrance {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ── Interactive Card Micro-interactions ── */
+.fitbee-card-interactive {
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), border-color 200ms ease;
+  will-change: transform, box-shadow;
+}
+
+.fitbee-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.07);
+}
+
+.fitbee-card-interactive:active {
+  transform: scale(0.98);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Button Interaction System ── */
+.fitbee-btn {
+  font-family: var(--hd-font);
+  border-radius: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1), background-color 180ms ease, border-color 180ms ease;
+  user-select: none;
+}
+
+.fitbee-btn:hover {
+  transform: translateY(-1px);
+}
+
+.fitbee-btn:active {
+  transform: scale(0.98);
+}
+
+.fitbee-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(92, 141, 137, 0.22);
+}
+
+/* ── Icon Button Polish ── */
+.fitbee-icon-btn {
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 180ms ease, transform 180ms ease, color 180ms ease;
+}
+
+.fitbee-icon-btn:hover {
+  background-color: #F3F4F6;
+  transform: scale(1.05);
+}
+
+.fitbee-icon-btn:active {
+  transform: scale(0.94);
+}
+
+.fitbee-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(92, 141, 137, 0.25);
+}
+
+/* ── Form Inputs Polish ── */
+.fitbee-input {
+  border-radius: 16px;
+  border: 1px solid var(--hd-divider);
+  background-color: #FFFFFF;
+  color: var(--hd-text);
+  font-family: var(--hd-font);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+  outline: none;
+}
+
+.fitbee-input:focus {
+  border-color: var(--hd-primary);
+  box-shadow: 0 0 0 3px rgba(92, 141, 137, 0.15);
+}
+
+/* ── Shared Monthly History Empty States ── */
+.fitbee-empty-month-state {
+  background-color: #FFFFFF;
+  border-radius: 24px;
+  padding: 36px 24px;
+  text-align: center;
+  border: 1px solid #E8E8E6;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+  color: #6B7280;
+  font-size: 14px;
+  font-weight: 500;
+  animation: fadeIn 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  margin: 8px 0;
+}
+
+.fitbee-remaining-weeks-empty {
+  padding: 14px 18px;
+  text-align: center;
+  color: #9CA3AF;
+  font-size: 13px;
+  font-weight: 500;
+  background-color: #FAFAF8;
+  border-radius: 16px;
+  border: 1px dashed #E8E8E6;
+  animation: fadeIn 200ms ease;
+  margin-top: 4px;
+}
+
+/* ── Tab Content Entrance Animation ── */
+.fitbee-tab-content {
+  animation: fitbeeTabEntrance 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Workout Progress & Analysis: Grouped Vertical Bar Charts ── */
+.exercise-comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 580px) {
+  .exercise-comparison-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Accessibility: Reduced Motion Support ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
