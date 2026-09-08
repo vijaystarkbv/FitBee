@@ -135,14 +135,14 @@ export function getUserLocalTimeInfo(timezone: string = 'UTC', baseDate: Date = 
 /**
  * Determines notification intensity from evaluation slot and local time.
  */
-export function getIntensityForSlot(slot: EvaluationSlot | string, hour: number): NotificationIntensity {
-  if (slot === '08:00' || hour < 11) {
-    return 'CALM';
+export function getIntensityForSlot(slot: EvaluationSlot | string, hour?: number): NotificationIntensity {
+  if (slot === '22:00' || (hour !== undefined && hour >= 21)) {
+    return 'CHAOS';
   }
-  if (slot === '12:00' || slot === '15:00' || (hour >= 11 && hour < 18)) {
+  if (slot === '15:00' || slot === '19:00' || (hour !== undefined && hour >= 14 && hour < 21)) {
     return 'NUDGE';
   }
-  return 'CHAOS'; // 19:00, 22:00, or late evening
+  return 'CALM';
 }
 
 /**
