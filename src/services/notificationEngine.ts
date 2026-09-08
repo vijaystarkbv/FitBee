@@ -166,6 +166,51 @@ export function getDeepLinkForState(state: NotificationState | 'NONE'): string {
 }
 
 /**
+ * Calculates start and end of user's local calendar day in UTC ISO format.
+ */
+export function getLocalDayBoundaries(localDate: string, timezone: string = 'UTC'): { startIso: string; endIso: string } {
+  try {
+    const [y, m, d] = localDate.split('-').map(Number);
+    const refUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    const tzStr = timezone || 'UTC';
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tzStr,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    }).formatToParts(refUtc);
+
+    let tzHour = 12;
+    let tzMinute = 0;
+    let tzDay = d;
+    for (const p of parts) {
+      if (p.type === 'hour') tzHour = parseInt(p.value, 10);
+      if (p.type === 'minute') tzMinute = parseInt(p.value, 10);
+      if (p.type === 'day') tzDay = parseInt(p.value, 10);
+    }
+    const diffMinutes = (tzHour - 12) * 60 + tzMinute + (tzDay - d) * 24 * 60;
+    const offsetMs = diffMinutes * 60000;
+
+    const startUtc = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0) - offsetMs);
+    const endUtc = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999) - offsetMs);
+
+    return {
+      startIso: startUtc.toISOString(),
+      endIso: endUtc.toISOString(),
+    };
+  } catch {
+    return {
+      startIso: `${localDate}T00:00:00.000Z`,
+      endIso: `${localDate}T23:59:59.999Z`,
+    };
+  }
+}
+
+/**
  * Calculates raw daily pending state for Habits, Food, and Workout.
  * Uses existing Supabase tables and models as the canonical source of truth.
  */
@@ -173,7 +218,8 @@ export async function calculateRawDailyState(
   userId: string,
   localDate: string,
   weekdayName: string,
-  profile?: Profile | null
+  profile?: Profile | null,
+  timezone: string = 'UTC'
 ): Promise<RawCategoryState> {
   // ─────────────────────────────────────────────────────────────
   // 1. HABITS
@@ -288,17 +334,15 @@ export async function calculateRawDailyState(
       isScheduledToday = enabledDayNames.has(weekdayName.trim().toLowerCase());
 
       if (isScheduledToday) {
-        // Check if user has already completed a workout today
-        // Query workout_logs for local date
-        const queryDate = `${localDate}T00:00:00.000Z`;
-        const nextDayDate = new Date(`${localDate}T23:59:59.999Z`).toISOString();
+        // Query workout_logs for local date boundaries
+        const { startIso, endIso } = getLocalDayBoundaries(localDate, timezone);
 
         const { data: workoutLogs } = await supabase
           .from('workout_logs')
           .select('id, completed_at, start_time, workout_log_sets(id)')
           .eq('user_id', userId)
-          .gte('start_time', queryDate)
-          .lte('start_time', nextDayDate);
+          .gte('start_time', startIso)
+          .lte('start_time', endIso);
 
         const hasCompletedLog = (workoutLogs || []).some(
           (log: any) => log.completed_at !== null || (log.workout_log_sets && log.workout_log_sets.length > 0)
@@ -429,7 +473,7 @@ export async function evaluateNotificationDecision(
   }
 
   // 4. Calculate raw daily state from database
-  const rawState = await calculateRawDailyState(userId, timeInfo.localDate, timeInfo.weekdayName, profile);
+  const rawState = await calculateRawDailyState(userId, timeInfo.localDate, timeInfo.weekdayName, profile, settings.timezone);
 
   // 5. Apply user preferences
   const habitActive = rawState.habitPending && settings.habit_notifications_enabled;

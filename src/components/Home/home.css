@@ -73,11 +73,24 @@
   height: 36px;
   border-radius: 50%;
   background: #F3F4F6;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
   transition: background-color var(--hd-transition);
+}
+
+.hd-topbar-avatar:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+.hd-topbar-avatar:focus-visible {
+  outline: 2px solid var(--hd-primary);
+  outline-offset: 2px;
 }
 
 .hd-topbar-avatar:hover {
@@ -391,6 +404,11 @@
   border-radius: 12px;
   transition: color var(--hd-transition), background-color var(--hd-transition);
   min-width: 60px;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .hd-nav-item:hover {
@@ -399,6 +417,17 @@
 
 .hd-nav-item.active {
   color: var(--hd-primary);
+}
+
+.hd-nav-item:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+  background-color: transparent;
+}
+
+.hd-nav-item:focus-visible {
+  outline: 2px solid var(--hd-primary);
+  outline-offset: 2px;
 }
 
 .hd-nav-item svg {
@@ -420,6 +449,21 @@
   color: var(--hd-primary);
   cursor: pointer;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.hd-nav-fab:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+.hd-nav-fab:focus-visible {
+  outline: 2px solid var(--hd-primary);
+  outline-offset: 2px;
 }
 
 .hd-nav-fab-circle {
@@ -506,7 +550,18 @@
   padding: 16px 0;
   border-bottom: 1px solid var(--hd-divider);
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
   transition: opacity var(--hd-transition);
+}
+
+.hd-settings-item:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.hd-settings-item:focus-visible {
+  outline: 2px solid var(--hd-primary);
+  outline-offset: 2px;
 }
 
 .hd-settings-item:hover {
@@ -551,7 +606,18 @@
   color: #C96A6A;
   cursor: pointer;
   margin-top: 24px;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
   transition: background-color var(--hd-transition);
+}
+
+.hd-signout-btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.hd-signout-btn:focus-visible {
+  outline: 2px solid #C96A6A;
+  outline-offset: 2px;
 }
 
 .hd-signout-btn:hover {

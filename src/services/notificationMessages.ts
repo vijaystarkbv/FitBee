@@ -1107,13 +1107,43 @@ export const NOTIFICATION_MESSAGES: Record<
 
 /**
  * Selects a message for the given state and intensity, rotating to avoid recently sent messages.
+/**
+ * Returns all 140 notification messages in a flat array.
+ */
+export function getAllNotificationMessages(): NotificationMessageItem[] {
+  const all: NotificationMessageItem[] = [];
+  for (const state of Object.keys(NOTIFICATION_MESSAGES) as NotificationState[]) {
+    for (const intensity of Object.keys(NOTIFICATION_MESSAGES[state]) as NotificationIntensity[]) {
+      all.push(...(NOTIFICATION_MESSAGES[state][intensity] || []));
+    }
+  }
+  return all;
+}
+
+/**
+ * Selects a message from the specified state and intensity pool with anti-repeat rotation.
+ * If habitStreakDays <= 0, filters out any message claiming a streak is at risk.
  */
 export function selectNotificationMessage(
   state: NotificationState,
   intensity: NotificationIntensity,
-  recentMessageIds: string[] = []
+  recentMessageIds: string[] = [],
+  habitStreakDays: number = 0
 ): NotificationMessageItem {
-  const pool = NOTIFICATION_MESSAGES[state]?.[intensity] || [];
+  let pool = NOTIFICATION_MESSAGES[state]?.[intensity] || [];
+
+  // Streak-safety enforcement: Never tell the user their streak is at risk unless an active streak exists
+  if (habitStreakDays <= 0) {
+    const streakFreePool = pool.filter(
+      (m) =>
+        !m.title.toLowerCase().includes('streak') &&
+        !m.body.toLowerCase().includes('streak')
+    );
+    if (streakFreePool.length > 0) {
+      pool = streakFreePool;
+    }
+  }
+
   if (pool.length === 0) {
     // Fallback if pool is empty
     return {

@@ -6,6 +6,7 @@ import { getDailyWalkingLog } from '../../services/walkingService';
 import { getDaysSinceLastWeightUpdate } from '../../services/nutritionTargetService';
 import { useClock } from '../../hooks/useClock';
 import { formatDateKey } from '../../utils/formatters';
+import { NotificationPromptBanner } from './NotificationPromptBanner';
 import './home.css';
 
 interface HomeDashboardProps {
@@ -119,6 +120,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </button>
         </div>
       )}
+
+      {/* ── Device-aware Push Notification Prompt Banner ── */}
+      <NotificationPromptBanner userId={profile.id} />
 
       {/* ── 2-Week Weight Check-In Reminder Card ── */}
       {daysSinceWeightUpdate >= 14 && (

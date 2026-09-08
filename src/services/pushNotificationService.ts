@@ -166,6 +166,22 @@ export async function updateUserNotificationPreferences(
 }
 
 /**
+ * Checks whether the current browser device has an active PushManager subscription.
+ */
+export async function isCurrentDeviceRegistered(): Promise<boolean> {
+  if (!isPushNotificationSupported()) return false;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) return false;
+    const subscription = await registration.pushManager.getSubscription();
+    return subscription !== null;
+  } catch (err) {
+    console.warn('Error checking device push registration:', err);
+    return false;
+  }
+}
+
+/**
  * Registers the Service Worker (/sw.js) and requests PushManager subscription.
  * Saves subscription to Supabase push_subscriptions table.
  */
@@ -189,10 +205,13 @@ export async function registerPushSubscription(userId: string): Promise<boolean>
 
     // 3. Subscribe via PushManager with VAPID applicationServerKey
     const convertedKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: convertedKey as unknown as BufferSource,
-    });
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertedKey as unknown as BufferSource,
+      });
+    }
 
     // 4. Extract subscription keys
     const subJson = subscription.toJSON();
@@ -237,6 +256,12 @@ export async function registerPushSubscription(userId: string): Promise<boolean>
       return false;
     }
 
+    // Cache local device state
+    try {
+      localStorage.setItem('fitbee_push_endpoint_' + userId, endpoint);
+      localStorage.removeItem('fitbee_push_unregistered_' + userId);
+    } catch {}
+
     return true;
   } catch (err) {
     console.error('Error during push registration:', err);
@@ -246,25 +271,49 @@ export async function registerPushSubscription(userId: string): Promise<boolean>
 
 /**
  * Unsubscribes from push notifications on the current browser client and updates Supabase.
+ * Operation is idempotent and specifically targets this device's endpoint.
  */
 export async function unsubscribePush(userId: string): Promise<boolean> {
   if (!isPushNotificationSupported() || !userId) return false;
 
   try {
-    const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+    let endpoint: string | null = null;
+
+    // Check active service worker subscription
+    const registration = await navigator.serviceWorker.getRegistration();
     if (registration) {
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
-        const endpoint = subscription.endpoint;
-        await subscription.unsubscribe();
-
-        // Mark inactive in Supabase
-        await supabase
-          .from('push_subscriptions')
-          .update({ is_active: false, updated_at: new Date().toISOString() })
-          .eq('endpoint', endpoint);
+        endpoint = subscription.endpoint;
+        try {
+          await subscription.unsubscribe();
+        } catch (unsubErr) {
+          console.warn('Push subscription unsubscribe warning:', unsubErr);
+        }
       }
     }
+
+    // Fallback to locally cached endpoint if subscription object was already detached
+    if (!endpoint) {
+      try {
+        endpoint = localStorage.getItem('fitbee_push_endpoint_' + userId);
+      } catch {}
+    }
+
+    // Mark inactive in Supabase for this specific device
+    if (endpoint) {
+      await supabase
+        .from('push_subscriptions')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('endpoint', endpoint);
+    }
+
+    // Store unregister flag so auto-register doesn't immediately re-enable without user action
+    try {
+      localStorage.removeItem('fitbee_push_endpoint_' + userId);
+      localStorage.setItem('fitbee_push_unregistered_' + userId, 'true');
+    } catch {}
+
     return true;
   } catch (err) {
     console.error('Error unsubscribing push notification:', err);

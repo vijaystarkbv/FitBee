@@ -14,6 +14,12 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ProfileSettings } from './components/Profile/ProfileSettings';
 import { NotificationSettings } from './components/Settings/NotificationSettings';
 import { initRealtime, cleanupRealtime, REALTIME_EVENTS } from './services/realtimeService';
+import {
+  isPushNotificationSupported,
+  getNotificationPermissionState,
+  isCurrentDeviceRegistered,
+  registerPushSubscription,
+} from './services/pushNotificationService';
 import './components/Home/home.css';
 
 const ACTIVE_TAB_KEY = 'fitbee_active_tab';
@@ -70,6 +76,28 @@ export const App: React.FC = () => {
     navigator.serviceWorker.addEventListener('message', handleSwMessage);
     return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
   }, []);
+
+  // Auto-register device if browser permission is already granted and user hasn't unregistered
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId || !isPushNotificationSupported()) return;
+
+    const checkAutoRegister = async () => {
+      try {
+        const perm = getNotificationPermissionState();
+        const isUnregistered = localStorage.getItem('fitbee_push_unregistered_' + userId) === 'true';
+        if (perm === 'granted' && !isUnregistered) {
+          const isRegistered = await isCurrentDeviceRegistered();
+          if (!isRegistered) {
+            await registerPushSubscription(userId);
+          }
+        }
+      } catch (err) {
+        console.warn('Auto push registration check failed:', err);
+      }
+    };
+    checkAutoRegister();
+  }, [session?.user?.id]);
 
   useEffect(() => {
     let prevUserId: string | null = null;
