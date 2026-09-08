@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { OnboardingFormState } from '../types/fitness.types';
 import type { GeminiMacroEstimationResponse, GeminiMealParseResponse, GeminiParsedMealItem } from '../types/gemini.types';
 import { formatStatementsForPrompt, PREDEFINED_STATEMENTS } from './nutritionStatementLibrary';
@@ -13,45 +12,33 @@ function cleanJsonResponseText(text: string): string {
     .trim();
 }
 
-// Verified working model aliases per Gemini API inspection
-const VERIFIED_MODELS = [
-  'gemini-flash-lite-latest',
-  'gemini-3.6-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-flash-latest',
-];
-
 /**
- * Executes a Gemini model call using verified active models with graceful fallback
+ * Executes a Gemini model call via the server-side /api/gemini endpoint
+ * The Gemini API key is maintained securely on the server and never exposed to the client.
  */
-async function generateContent(
-  genAI: GoogleGenerativeAI,
-  prompt: string
-): Promise<string> {
-  let lastError: any = null;
+async function generateContent(prompt: string): Promise<string> {
+  const response = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt,
+      responseMimeType: 'application/json',
+    }),
+  });
 
-  for (const modelName of VERIFIED_MODELS) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: 'application/json',
-        },
-      });
-
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      if (text) {
-        return text;
-      }
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`Gemini Model ${modelName} encountered an issue. Trying next model...`, err?.message || err);
-      continue;
-    }
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData?.error || `Gemini API request failed with status ${response.status}`);
   }
 
-  throw lastError || new Error('Failed to generate content with Gemini API.');
+  const data = await response.json();
+  if (!data?.text) {
+    throw new Error('Gemini API returned an empty response.');
+  }
+
+  return data.text;
 }
 
 /**
@@ -222,8 +209,6 @@ export function calculateDeterministicTargets(data: DeterministicTargetsInput): 
 export async function estimateUserTargets(
   onboardingData: OnboardingFormState
 ): Promise<GeminiMacroEstimationResponse> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-
   // ── Build equipment string ──
   const equipmentList = (onboardingData.equipment || []).length > 0
     ? onboardingData.equipment.join(', ')
@@ -238,14 +223,7 @@ export async function estimateUserTargets(
     })
     .join('; ') || 'N/A';
 
-  // ── Fallback: deterministic calculation ──
-  if (!apiKey || apiKey.includes('placeholder')) {
-    console.warn('FitBee: VITE_GEMINI_API_KEY missing. Using deterministic macro estimation.');
-    return calculateDeterministicTargets(onboardingData);
-  }
-
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
 
     const goalDescriptions: Record<string, string> = {
       gain_muscle: 'Muscle Gain (gain_muscle) — targeted bodyweight gain (~0.25% - 0.5%/week, ~0.3% default starting point) to support hypertrophy and strength without excessive fat gain',
@@ -343,7 +321,7 @@ Return ONLY a JSON object with these exact keys:
 Do not include any other text. Return only the JSON object.
 `;
 
-    const rawText = await generateContent(genAI, prompt);
+    const rawText = await generateContent(prompt);
     const cleanedText = cleanJsonResponseText(rawText);
     const parsed = JSON.parse(cleanedText);
 
@@ -380,14 +358,7 @@ Do not include any other text. Return only the JSON object.
  * 2. Natural Language Meal Parser
  */
 export async function parseMealText(mealDescription: string): Promise<GeminiMealParseResponse> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-
-  if (!apiKey || apiKey.includes('placeholder')) {
-    throw new Error('Gemini API Key is missing or invalid. Please configure VITE_GEMINI_API_KEY in your .env.local file.');
-  }
-
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
     const prompt = `
 You are a precision food nutrition database parser.
 Parse the user's meal description text into itemized food entries and calculate macro totals.
@@ -415,7 +386,7 @@ Output JSON schema strictly matching:
 }
 `;
 
-    const rawText = await generateContent(genAI, prompt);
+    const rawText = await generateContent(prompt);
     const cleanedText = cleanJsonResponseText(rawText);
 
     if (!cleanedText) {
@@ -453,10 +424,8 @@ Output JSON schema strictly matching:
 
     if (error instanceof SyntaxError) {
       userFriendlyError = `Gemini response could not be parsed as valid JSON: ${error.message}`;
-    } else if (error?.message?.includes('API_KEY_INVALID') || error?.message?.includes('API key not valid')) {
-      userFriendlyError = 'Invalid Gemini API Key. Please check VITE_GEMINI_API_KEY in your .env.local file.';
-    } else if (error?.status === 404 || error?.message?.includes('404')) {
-      userFriendlyError = 'Gemini API Error (404): Model gemini-flash-latest not found. Check model availability for your API key.';
+    } else if (error?.status === 503 || error?.message?.includes('503') || error?.message?.includes('not configured')) {
+      userFriendlyError = 'AI meal parsing service is currently unavailable. Please enter items manually.';
     } else if (error?.message?.includes('QUOTA_EXCEEDED') || error?.status === 429) {
       userFriendlyError = 'Gemini API Rate Limit / Quota Exceeded. Please wait a moment and try again.';
     } else if (error?.message) {
@@ -791,15 +760,7 @@ export function fallbackLongitudinalRecommendation(
 export async function recommendLongitudinalTargets(
   input: LongitudinalRecommendationInput
 ): Promise<LongitudinalRecommendationResult> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-
-  if (!apiKey || apiKey.includes('placeholder')) {
-    console.warn('FitBee: VITE_GEMINI_API_KEY missing. Using deterministic longitudinal recommendation.');
-    return fallbackLongitudinalRecommendation(input);
-  }
-
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
     const { profile, active_target, recent_updates } = input;
     const userSex = profile.sex || profile.gender || 'unspecified';
 
@@ -871,7 +832,7 @@ Select 1 to 3 statement_ids from this PREDEFINED STATEMENTS list:
 ${statementsList}
 `;
 
-    const rawText = await generateContent(genAI, prompt);
+    const rawText = await generateContent(prompt);
     const cleanedText = cleanJsonResponseText(rawText);
 
     if (!cleanedText) {
