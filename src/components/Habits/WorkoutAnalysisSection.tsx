@@ -222,9 +222,15 @@ export const WorkoutAnalysisSection: React.FC<WorkoutAnalysisSectionProps> = ({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span>🟠 Workout day</span>
-                  <span>·</span>
-                  <span>○ Non-workout day</span>
+                  {analysis.plannedDaysCount === 0 ? (
+                    <span>○ No routine scheduled</span>
+                  ) : (
+                    <>
+                      <span>🟠 Workout day</span>
+                      <span>·</span>
+                      <span>○ Non-workout day</span>
+                    </>
+                  )}
                 </div>
                 {analysis.extraWorkoutsCount > 0 && (
                   <span style={{ color: '#2A5A9E' }}>🔵 Extra ({analysis.extraWorkoutsCount})</span>
@@ -238,7 +244,9 @@ export const WorkoutAnalysisSection: React.FC<WorkoutAnalysisSectionProps> = ({
                     {analysis.totalWorkouts} {analysis.totalWorkouts === 1 ? 'workout' : 'workouts'}
                   </div>
                   <div style={{ fontSize: 12, color: '#6B7280', marginTop: 1 }}>
-                    {analysis.completedPlannedCount} / {analysis.plannedDaysCount} planned workouts completed
+                    {analysis.plannedDaysCount === 0
+                      ? 'No planned workout schedule'
+                      : `${analysis.completedPlannedCount} / ${analysis.plannedDaysCount} planned workouts completed`}
                   </div>
                 </div>
 

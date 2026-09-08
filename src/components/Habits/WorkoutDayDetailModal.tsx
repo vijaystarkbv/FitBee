@@ -68,6 +68,8 @@ export const WorkoutDayDetailModal: React.FC<WorkoutDayDetailModalProps> = ({
         return { label: 'Extra Workout', color: '#2A5A9E', bg: '#EBF2FC', border: '#BFDBFE' };
       case 'MISSED':
         return { label: 'Missed Workout', color: '#A83232', bg: '#FDEBEB', border: '#FECACA' };
+      case 'NONE':
+        return { label: 'No Schedule', color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB' };
       case 'REST':
       default:
         return { label: 'Rest Day', color: '#4B5563', bg: '#F3F4F6', border: '#E5E7EB' };
@@ -75,7 +77,15 @@ export const WorkoutDayDetailModal: React.FC<WorkoutDayDetailModalProps> = ({
   };
 
   const badge = getBadge();
-  const workoutTitle = log?.day_name || (isPlanned ? plannedDayName || 'Planned Workout' : isExtra ? 'Extra Workout' : 'Rest Day');
+  const workoutTitle =
+    log?.day_name ||
+    (isPlanned
+      ? plannedDayName || 'Planned Workout'
+      : isExtra
+      ? 'Extra Workout'
+      : status === 'NONE'
+      ? 'No Routine Scheduled'
+      : 'Rest Day');
 
   return (
     <div
@@ -308,6 +318,25 @@ export const WorkoutDayDetailModal: React.FC<WorkoutDayDetailModalProps> = ({
             </p>
             <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>
               Scheduled recovery day.
+            </p>
+          </div>
+        )}
+
+        {status === 'NONE' && (
+          <div
+            style={{
+              backgroundColor: '#FAFAF8',
+              borderRadius: 16,
+              padding: '20px 16px',
+              textAlign: 'center',
+              border: '1px dashed #E8E8E6',
+            }}
+          >
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#4B5563', margin: 0 }}>
+              No workout template was active.
+            </p>
+            <p style={{ fontSize: 12, color: '#9CA3AF', margin: '4px 0 0' }}>
+              This date was prior to creating or scheduling your workout routine.
             </p>
           </div>
         )}

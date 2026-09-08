@@ -317,3 +317,30 @@ export interface NutritionProgressUpdate {
   target_fat_at_time?: number;
   target_source_at_time?: string;
 }
+
+export interface WorkoutTemplateVersionDayConfig {
+  id: string;
+  day_name: string;
+  is_enabled: boolean;
+  order_index: number;
+  exercises: Array<{
+    id?: string;
+    exercise_id: string;
+    order_index: number;
+    target_sets: number;
+    target_reps: number;
+    target_time_seconds?: number | null;
+    default_weight_kg?: number | null;
+  }>;
+}
+
+export interface WorkoutTemplateVersion {
+  id: string;
+  user_id: string;
+  template_id: string;
+  effective_from: string;
+  effective_to: string | null;
+  scheduled_days: string[];
+  days_config: WorkoutTemplateVersionDayConfig[];
+  created_at: string;
+}

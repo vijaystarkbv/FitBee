@@ -5,7 +5,10 @@ import {
   getUserNutritionTargets,
   calculateNutritionTargetsScore,
 } from './nutritionHistoryService';
-import { fetchUserPlannedSchedule } from './workoutHistoryService';
+import {
+  getUserTemplateVersions,
+  getActiveTemplateVersionForDateSync,
+} from './workoutTemplateVersionService';
 
 export type StreakDayStatus = 'FULL' | 'PARTIAL' | 'MISSED' | 'FROZEN';
 
@@ -181,16 +184,8 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
   let milestonesAwarded = profile.streak_milestones_awarded ?? local.milestonesAwarded;
   const declinedDates = new Set<string>(local.declinedDates);
 
-  // 1. Fetch user's active planned workout schedule
-  const plannedDays = await fetchUserPlannedSchedule(userId);
-  const scheduledDayNames = new Set<string>(
-    plannedDays.map((d) => d.trim().toLowerCase())
-  );
-
-  const isScheduledRestDay = (d: Date): boolean => {
-    const weekdayName = WEEKDAY_NAMES[d.getDay()].toLowerCase();
-    return !scheduledDayNames.has(weekdayName);
-  };
+  // 1. Fetch user's template versions for historical schedule accuracy
+  const templateVersions = await getUserTemplateVersions(userId);
 
   // 2. Fetch past 60 days of nutrition logs
   const startDate = new Date(now);
@@ -247,6 +242,7 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     nutritionComplete: boolean;
     nutritionScore: number;
     isFrozen: boolean;
+    rawStatus: StreakDayStatus;
   }[] = [];
 
   for (let i = 60; i >= 0; i--) {
@@ -255,10 +251,16 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     const dateStr = formatDateKey(d);
     const isToday = dateStr === todayStr;
     const isFuture = d > now && !isToday;
-    const restDay = isScheduledRestDay(d);
 
-    // Workout requirement: real DB logs or scheduled rest day
-    const workoutComplete = restDay || Boolean(workoutMap[dateStr]);
+    // Resolve template version effective on this date
+    const activeVersion = getActiveTemplateVersionForDateSync(userId, d, templateVersions);
+    const hasActiveTemplate = activeVersion !== null;
+    const weekdayName = WEEKDAY_NAMES[d.getDay()].toLowerCase();
+    const scheduledDays = (activeVersion?.scheduled_days || []).map((x) => x.toLowerCase());
+    const isScheduledWorkoutDay = hasActiveTemplate && scheduledDays.includes(weekdayName);
+    const restDay = hasActiveTemplate && !isScheduledWorkoutDay;
+
+    const hasLoggedWorkout = Boolean(workoutMap[dateStr]);
 
     // Nutrition requirement: overall Nutrition Targets score >= 85%
     const nutLog = nutritionMap[dateStr];
@@ -283,6 +285,44 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     const dayIndex = d.getDay();
     const dayLabel = SHORT_DAY_LABELS[dayIndex];
 
+    // Determine initial daily status
+    let status: StreakDayStatus = 'MISSED';
+
+    if (isFrozen) {
+      status = 'FROZEN';
+    } else if (hasActiveTemplate) {
+      if (isScheduledWorkoutDay) {
+        // Scheduled workout day: both needed for FULL, either for PARTIAL
+        if (hasLoggedWorkout && nutritionComplete) {
+          status = 'FULL';
+        } else if (hasLoggedWorkout || nutritionComplete) {
+          status = 'PARTIAL';
+        } else {
+          status = 'MISSED';
+        }
+      } else {
+        // Scheduled rest day: completing nutrition satisfies the day (FULL).
+        // Extra workout with missed nutrition is PARTIAL.
+        // Neither completed is MISSED (no free streak for doing nothing).
+        if (nutritionComplete) {
+          status = 'FULL';
+        } else if (hasLoggedWorkout) {
+          status = 'PARTIAL';
+        } else {
+          status = 'MISSED';
+        }
+      }
+    } else {
+      // Prior to template creation: real logged activity counts, no free passes
+      if (nutritionComplete) {
+        status = 'FULL';
+      } else if (hasLoggedWorkout) {
+        status = 'PARTIAL';
+      } else {
+        status = 'MISSED';
+      }
+    }
+
     dailyRawList.push({
       date: d,
       dateStr,
@@ -290,10 +330,11 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
       isToday,
       isFuture,
       restDay,
-      workoutComplete,
+      workoutComplete: hasLoggedWorkout || restDay,
       nutritionComplete,
       nutritionScore,
       isFrozen,
+      rawStatus: status,
     });
   }
 
@@ -306,23 +347,31 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
 
   for (let i = 0; i < dailyRawList.length; i++) {
     const item = dailyRawList[i];
-    const { dateStr, dayLabel, isToday, isFuture, restDay, workoutComplete, nutritionComplete, nutritionScore, isFrozen } = item;
+    const {
+      dateStr,
+      dayLabel,
+      isToday,
+      isFuture,
+      restDay,
+      workoutComplete,
+      nutritionComplete,
+      nutritionScore,
+      isFrozen,
+      rawStatus,
+    } = item;
 
-    let status: StreakDayStatus = 'MISSED';
+    let status: StreakDayStatus = rawStatus;
     let countsTowardStreak = false;
 
-    if (isFrozen) {
-      status = 'FROZEN';
+    if (status === 'FROZEN') {
       countsTowardStreak = true;
       runningStreak++;
       consecutivePartial = 0; // Freeze saves streak and resets partial count
-    } else if (nutritionComplete && workoutComplete) {
-      status = 'FULL';
+    } else if (status === 'FULL') {
       countsTowardStreak = true;
       runningStreak++;
       consecutivePartial = 0; // Full day resets partial grace counter
-    } else if (nutritionComplete || workoutComplete) {
-      status = 'PARTIAL';
+    } else if (status === 'PARTIAL') {
       consecutivePartial++;
       if (consecutivePartial <= 4) {
         countsTowardStreak = true;
@@ -332,10 +381,10 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
         countsTowardStreak = false;
         runningStreak = 0;
         consecutivePartial = 0;
+        status = 'MISSED';
       }
     } else {
       // Neither completed -> MISSED
-      status = 'MISSED';
       countsTowardStreak = false;
 
       // If this was a past day (or yesterday) that broke an active streak, check freeze eligibility
@@ -448,7 +497,11 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     if (existing) {
       weeklyDays.push(existing);
     } else {
-      const restDay = isScheduledRestDay(wDate);
+      const wVersion = getActiveTemplateVersionForDateSync(userId, wDate, templateVersions);
+      const hasWTemplate = wVersion !== null;
+      const wWeekday = WEEKDAY_NAMES[wDate.getDay()].toLowerCase();
+      const wIsScheduled = hasWTemplate && (wVersion.scheduled_days || []).map(x => x.toLowerCase()).includes(wWeekday);
+      const restDay = hasWTemplate && !wIsScheduled;
       weeklyDays.push({
         dateStr,
         dayLabel,

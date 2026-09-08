@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { WorkoutTemplateDay, UserWorkoutExercise } from '../../types/database.types';
 import { ExerciseLibraryFlow } from './ExerciseLibrary/ExerciseLibraryFlow';
+import { recordTemplateVersion } from '../../services/workoutTemplateVersionService';
 
 interface CreateTemplateFlowProps {
   onBack: () => void;
@@ -140,10 +141,71 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
       setTemplateId(templateData.id);
       setDays(createdDays);
       setStep('choose_method');
+      await syncTemplateVersionSnapshot(templateData.id);
     } catch (err) {
       console.error('Failed to create template:', err);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const syncTemplateVersionSnapshot = async (tmplId: string) => {
+    try {
+      const { data: tmpl } = await supabase
+        .from('workout_templates')
+        .select('id, user_id')
+        .eq('id', tmplId)
+        .single();
+      if (!tmpl || !tmpl.user_id) return;
+
+      const { data: dayList } = await supabase
+        .from('workout_template_days')
+        .select('id, day_name, is_enabled, order_index')
+        .eq('template_id', tmplId)
+        .order('order_index', { ascending: true });
+
+      const dayIds = (dayList || []).map((d: any) => d.id);
+      let exList: any[] = [];
+      if (dayIds.length > 0) {
+        const { data: exercisesData } = await supabase
+          .from('workout_template_exercises')
+          .select('id, template_day_id, exercise_id, order_index, target_sets, target_reps, target_time_seconds, default_weight_kg')
+          .in('template_day_id', dayIds)
+          .order('order_index', { ascending: true });
+        exList = exercisesData || [];
+      }
+
+      const scheduledDays = (dayList || [])
+        .filter((d: any) => d.is_enabled && d.day_name)
+        .map((d: any) => d.day_name.trim());
+
+      const daysConfig = (dayList || []).map((d: any) => ({
+        id: d.id,
+        day_name: d.day_name,
+        is_enabled: d.is_enabled,
+        order_index: d.order_index,
+        exercises: exList
+          .filter((e: any) => e.template_day_id === d.id)
+          .map((e: any) => ({
+            id: e.id,
+            exercise_id: e.exercise_id,
+            order_index: e.order_index,
+            target_sets: e.target_sets,
+            target_reps: e.target_reps,
+            target_time_seconds: e.target_time_seconds,
+            default_weight_kg: e.default_weight_kg,
+          })),
+      }));
+
+      await recordTemplateVersion(
+        tmplId,
+        tmpl.user_id,
+        new Date().toISOString(),
+        scheduledDays,
+        daysConfig
+      );
+    } catch (err) {
+      console.warn('Error recording template version snapshot:', err);
     }
   };
 
@@ -249,6 +311,7 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
       setDays(sortedDays);
       setSelectedDays(sortedDays.map((d: any) => d.day_name || d.name || ''));
       await loadExercisesForTemplate(templateId);
+      await syncTemplateVersionSnapshot(templateId);
 
       // If the currently edited day was removed, exit day view
       if (selectedDayForEdit && !tempSelectedDays.includes(selectedDayForEdit.day_name || selectedDayForEdit.name || '')) {
@@ -337,6 +400,7 @@ export const CreateTemplateFlow: React.FC<CreateTemplateFlowProps> = ({ onBack, 
       }
 
       await loadExercisesForTemplate(templateId);
+      await syncTemplateVersionSnapshot(templateId);
     } catch (err) {
       console.error('Failed to update template day exercises:', err);
     } finally {

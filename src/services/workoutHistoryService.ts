@@ -1,7 +1,12 @@
 import { supabase } from './supabaseClient';
 import { MasterExercise } from '../types/database.types';
+import {
+  getUserTemplateVersions,
+  getActiveTemplateVersionForDateSync,
+  getEffectiveScheduleForDateSync,
+} from './workoutTemplateVersionService';
 
-export type WorkoutDayStatus = 'COMPLETED' | 'MISSED' | 'REST' | 'EXTRA';
+export type WorkoutDayStatus = 'COMPLETED' | 'MISSED' | 'REST' | 'EXTRA' | 'NONE';
 
 export interface SetDataItem {
   setNumber: number;
@@ -145,9 +150,11 @@ export function formatWeekDateRange(monday: Date, sunday: Date, includeYear = fa
 }
 
 /**
- * Fetch the user's planned template schedule (enabled weekday names like ['Monday', 'Wednesday', 'Friday'])
+ * Fetch the user's current planned template schedule (enabled weekday names like ['Monday', 'Wednesday', 'Friday']).
+ * Returns empty array [] if user has not created any workout templates.
  */
 export async function fetchUserPlannedSchedule(userId: string): Promise<string[]> {
+  if (!userId) return [];
   try {
     const { data: templates, error } = await supabase
       .from('workout_templates')
@@ -157,7 +164,7 @@ export async function fetchUserPlannedSchedule(userId: string): Promise<string[]
       .order('created_at', { ascending: false });
 
     if (error || !templates || templates.length === 0) {
-      return ['Monday', 'Wednesday', 'Friday']; // Default fallback if no template created yet
+      return []; // NO TEMPLATE = NO WORKOUT SCHEDULE = NO PLANNED DAYS
     }
 
     const activeTemplate = templates[0];
@@ -168,11 +175,24 @@ export async function fetchUserPlannedSchedule(userId: string): Promise<string[]
       }
     });
 
-    return enabledDays.length > 0 ? enabledDays : ['Monday', 'Wednesday', 'Friday'];
+    return enabledDays;
   } catch (err) {
     console.error('Failed to fetch user planned schedule:', err);
-    return ['Monday', 'Wednesday', 'Friday'];
+    return [];
   }
+}
+
+/**
+ * Fetch the user's historical planned template schedule effective on a specific date.
+ * Returns empty array [] if no template was effective on that date.
+ */
+export async function fetchUserPlannedScheduleForDate(
+  userId: string,
+  targetDate: Date | string
+): Promise<string[]> {
+  if (!userId || !targetDate) return [];
+  const versions = await getUserTemplateVersions(userId);
+  return getEffectiveScheduleForDateSync(userId, targetDate, versions);
 }
 
 /**
@@ -827,7 +847,7 @@ export async function fetchMonthlyWorkoutHistory(
   userId: string,
   year: number,
   month: number, // 0-based
-  plannedWeekdays: string[],
+  _plannedWeekdays: string[],
   clockNow: Date
 ): Promise<MonthlyWorkoutSummary> {
   const firstDay = new Date(year, month, 1);
@@ -839,7 +859,10 @@ export async function fetchMonthlyWorkoutHistory(
 
   const monthLabel = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  const logs = await fetchWorkoutLogsForRange(userId, startStr, endStr);
+  const [logs, versions] = await Promise.all([
+    fetchWorkoutLogsForRange(userId, startStr, endStr),
+    getUserTemplateVersions(userId),
+  ]);
 
   const logsByDate: Record<string, any[]> = {};
   let totalSetsCount = 0;
@@ -868,7 +891,12 @@ export async function fetchMonthlyWorkoutHistory(
     const dayOfWeek = curDate.getDay();
     const fullDayName = FULL_WEEKDAY_NAMES[dayOfWeek];
 
-    const isPlanned = plannedWeekdays.includes(fullDayName);
+    // Determine the template version active on THIS specific calendar date
+    const activeVersion = getActiveTemplateVersionForDateSync(userId, curDate, versions);
+    const hasActiveTemplate = activeVersion !== null;
+    const effectiveSchedule = activeVersion?.scheduled_days || [];
+
+    const isPlanned = hasActiveTemplate && effectiveSchedule.includes(fullDayName);
     const isPastOrToday = dateStr <= clockDateStr;
 
     if (isPlanned && isPastOrToday) {
@@ -886,9 +914,14 @@ export async function fetchMonthlyWorkoutHistory(
       );
       status = isExtra ? 'EXTRA' : 'COMPLETED';
     } else {
-      if (isPlanned && isPastOrToday) {
+      if (!hasActiveTemplate) {
+        // A) NO TEMPLATE ACTIVE ON THIS DATE -> BLANK / NEUTRAL (Never missed)
+        status = 'NONE';
+      } else if (isPlanned && isPastOrToday) {
+        // D) TEMPLATE ACTIVE + SCHEDULED + WORKOUT NOT COMPLETED -> MISSED
         status = 'MISSED';
       } else {
+        // B) TEMPLATE ACTIVE + NOT A SCHEDULED DAY -> REST
         status = 'REST';
       }
     }

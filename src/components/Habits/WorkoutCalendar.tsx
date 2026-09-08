@@ -84,6 +84,13 @@ export const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
           dot: '#6B9FE8',
           label: 'Extra workout',
         };
+      case 'NONE':
+        return {
+          bg: 'transparent',
+          text: '#9CA3AF',
+          dot: 'transparent',
+          label: 'No workout schedule',
+        };
       case 'REST':
       default:
         return {
@@ -285,6 +292,7 @@ export const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
             >
               {/* Layer 1: Seamless Continuous Capsule Spans */}
               {runs.map((run, runIndex) => {
+                if (run.status === 'NONE') return null;
                 const styles = getStatusStyles(run.status);
                 const leftPercent = (run.startCol / 7) * 100;
                 const widthPercent = ((run.endCol - run.startCol + 1) / 7) * 100;
