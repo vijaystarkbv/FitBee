@@ -30,6 +30,9 @@ function getInitialTab(): NavTab {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get('tab') as NavTab | null;
       if (tabParam && ['home', 'workout', 'meal', 'habits', 'settings'].includes(tabParam)) {
+        try {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (_) {}
         return tabParam;
       }
       const saved = localStorage.getItem(ACTIVE_TAB_KEY) as NavTab | null;

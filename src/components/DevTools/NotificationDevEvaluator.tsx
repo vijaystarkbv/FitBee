@@ -43,26 +43,45 @@ export const NotificationDevEvaluator: React.FC<NotificationDevEvaluatorProps> =
     setPushSending(true);
     setPushStatusMessage(null);
     try {
-      if (getNotificationPermissionState() === 'default') {
-        await registerPushSubscription(userId);
+      const perm = getNotificationPermissionState();
+      if (perm === 'denied') {
+        setPushStatusMessage('Notifications are blocked in your browser settings. Please allow notifications for FitBee.');
+        return;
       }
 
-      const res = await fetch('/api/notifications/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          sendPush: true,
-          testPayload: {
-            title: 'FitBee Test Notification 🐝',
-            body: 'Push notifications are configured and working seamlessly!',
-          },
-        }),
-      });
+      // Ensure device is actively registered with a push subscription
+      await registerPushSubscription(userId);
+
+      const requestBody = {
+        userId,
+        sendPush: true,
+        testPayload: {
+          title: 'FitBee Test Notification 🐝',
+          body: 'Your push notifications are working.',
+        },
+      };
+
+      let res: Response;
+      try {
+        res = await fetch('/api/notifications/evaluate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+        if (!res.ok && res.status === 404) {
+          throw new Error('Local route 404, falling back to worker');
+        }
+      } catch {
+        res = await fetch('https://fitbee.veyro.workers.dev/api/notifications/evaluate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+      }
 
       const data = await res.json();
       if (data.pushResult?.deliveredCount > 0) {
-        setPushStatusMessage(`Sent to ${data.pushResult.deliveredCount} active device(s)!`);
+        setPushStatusMessage(`Sent to ${data.pushResult.deliveredCount} active device(s)! Check your Windows notification center / phone notification shade.`);
       } else if (data.pushResult?.reason) {
         setPushStatusMessage(`Push status: ${data.pushResult.reason}`);
       } else {

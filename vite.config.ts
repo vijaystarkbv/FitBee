@@ -112,6 +112,14 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), geminiDevPlugin(apiKey)],
+    server: {
+      proxy: {
+        '/api/notifications': {
+          target: 'https://fitbee.veyro.workers.dev',
+          changeOrigin: true,
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

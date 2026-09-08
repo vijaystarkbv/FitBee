@@ -236,12 +236,11 @@ async function dispatchUserPush(
     privateKey: env.VAPID_PRIVATE_KEY || DEFAULT_VAPID_PRIVATE_KEY,
   };
 
-  // 1. Fetch active push subscriptions for user
-  const { data: subs, error: subsError } = await supabase
-    .from('push_subscriptions')
-    .select('id, endpoint, p256dh, auth')
-    .eq('user_id', userId)
-    .eq('is_active', true);
+  // 1. Fetch active push subscriptions for user via SECURITY DEFINER RPC
+  const { data: subs, error: subsError } = await supabase.rpc(
+    'get_active_push_subscriptions',
+    { p_user_id: userId }
+  );
 
   if (subsError || !subs || subs.length === 0) {
     return {
@@ -256,14 +255,14 @@ async function dispatchUserPush(
   let deliveredCount = 0;
   const expiredEndpoints: string[] = [];
 
-  const pushPromises = subs.map(async (sub) => {
+  const pushPromises = (subs as any[]).map(async (sub) => {
     const res = await sendWebPushNotification(
       { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
       {
         title: notification.title,
         body: notification.body,
-        icon: '/icons/icon-192.png',
-        badge: '/icons/badge-72.png',
+        icon: '/favicon.svg',
+        badge: '/favicon.svg',
         data: {
           url: notification.deepLinkUrl,
           state: notification.state,
@@ -284,12 +283,13 @@ async function dispatchUserPush(
 
   await Promise.allSettled(pushPromises);
 
-  // 3. Mark expired endpoints as inactive
+  // 3. Mark expired endpoints as inactive via RPC
   if (expiredEndpoints.length > 0) {
-    await supabase
-      .from('push_subscriptions')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .in('endpoint', expiredEndpoints);
+    await Promise.allSettled(
+      expiredEndpoints.map((ep) =>
+        supabase.rpc('deactivate_push_endpoint', { p_endpoint: ep })
+      )
+    );
   }
 
   if (deliveredCount === 0) {
@@ -301,7 +301,16 @@ async function dispatchUserPush(
     };
   }
 
-  // 4. Record single delivery event atomically in notification_logs
+  // 4. For manual developer tests, do not consume production slots or enforce daily cap
+  if (notification.metadata?.manualTest) {
+    return {
+      allowed: true,
+      deliveredCount,
+      totalSubscriptions: subs.length,
+    };
+  }
+
+  // 5. Record single delivery event atomically in notification_logs
   // enforcing the 5-per-day hard cap and slot idempotency
   const { data: rpcResult, error: rpcError } = await supabase.rpc(
     'check_and_record_notification',
