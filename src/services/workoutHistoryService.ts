@@ -184,6 +184,15 @@ export async function fetchWorkoutLogsForRange(
   endDateStr: string
 ): Promise<any[]> {
   try {
+    // Buffer query range by 1 day on either side to safely encompass all timezones
+    const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
+    const paddedStart = new Date(sYear, sMonth - 1, sDay - 1);
+    const paddedStartStr = formatDateKey(paddedStart);
+
+    const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
+    const paddedEnd = new Date(eYear, eMonth - 1, eDay + 1);
+    const paddedEndStr = formatDateKey(paddedEnd);
+
     const { data, error } = await supabase
       .from('workout_logs')
       .select(`
@@ -199,8 +208,8 @@ export async function fetchWorkoutLogsForRange(
         )
       `)
       .eq('user_id', userId)
-      .gte('start_time', `${startDateStr}T00:00:00.000Z`)
-      .lte('start_time', `${endDateStr}T23:59:59.999Z`)
+      .gte('start_time', `${paddedStartStr}T00:00:00.000Z`)
+      .lte('start_time', `${paddedEndStr}T23:59:59.999Z`)
       .order('start_time', { ascending: true });
 
     if (error) {
@@ -208,7 +217,12 @@ export async function fetchWorkoutLogsForRange(
       return [];
     }
 
-    return data || [];
+    // Filter in memory using local calendar date so timezone offsets never clip records
+    return (data || []).filter((log) => {
+      if (!log.start_time) return false;
+      const logLocalDate = formatDateKey(new Date(log.start_time));
+      return logLocalDate >= startDateStr && logLocalDate <= endDateStr;
+    });
   } catch (err) {
     console.error('Failed to fetch workout logs range:', err);
     return [];

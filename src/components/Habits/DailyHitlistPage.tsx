@@ -27,6 +27,42 @@ interface ActiveTimerState {
   startedAt: string; // ISO string
   accumulatedSeconds: number; // Seconds prior to current unpaused interval
   lastTickTimestamp: number; // ms timestamp of last resume
+  dateKey: string; // YYYY-MM-DD
+}
+
+const TIMER_STORAGE_KEY_PREFIX = 'fitbee_active_habit_timer_';
+
+function getStoredTimer(userId: string, todayKey: string): ActiveTimerState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`${TIMER_STORAGE_KEY_PREFIX}${userId}`);
+    if (raw) {
+      const parsed: ActiveTimerState = JSON.parse(raw);
+      if (parsed.dateKey === todayKey && parsed.habitId) {
+        return parsed;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function saveStoredTimer(userId: string, timer: ActiveTimerState | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!timer) {
+      localStorage.removeItem(`${TIMER_STORAGE_KEY_PREFIX}${userId}`);
+    } else {
+      localStorage.setItem(`${TIMER_STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(timer));
+    }
+  } catch (_) {}
+}
+
+function calculateCurrentElapsed(timer: ActiveTimerState | null): number {
+  if (!timer) return 0;
+  if (timer.status === 'paused') return timer.accumulatedSeconds;
+  const nowMs = Date.now();
+  const delta = Math.max(0, Math.floor((nowMs - timer.lastTickTimestamp) / 1000));
+  return timer.accumulatedSeconds + delta;
 }
 
 export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onBack }) => {
@@ -47,9 +83,18 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
 
-  // Active Live Timer State
-  const [activeTimer, setActiveTimer] = useState<ActiveTimerState | null>(null);
-  const [liveElapsedSeconds, setLiveElapsedSeconds] = useState<number>(0);
+  // Active Live Timer State (Persisted in localStorage with timestamp deltas)
+  const [activeTimer, setActiveTimerState] = useState<ActiveTimerState | null>(() =>
+    getStoredTimer(profile.id, todayKey)
+  );
+  const [liveElapsedSeconds, setLiveElapsedSeconds] = useState<number>(() =>
+    calculateCurrentElapsed(getStoredTimer(profile.id, todayKey))
+  );
+
+  const setActiveTimer = (timer: ActiveTimerState | null) => {
+    setActiveTimerState(timer);
+    saveStoredTimer(profile.id, timer);
+  };
 
   const timerIntervalRef = useRef<any>(null);
 
@@ -107,21 +152,37 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
   }, [todayKey, activeTimer, loadAllData]);
 
   // ─────────────────────────────────────────────────────────────
-  // Live Timer Interval
+  // Live Timer Interval & Background/Visibility Sync
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
+    const syncTime = () => {
+      if (activeTimer) {
+        setLiveElapsedSeconds(calculateCurrentElapsed(activeTimer));
+      }
+    };
+
+    syncTime();
+
     if (activeTimer && activeTimer.status === 'running') {
-      timerIntervalRef.current = setInterval(() => {
-        const nowMs = Date.now();
-        const delta = Math.floor((nowMs - activeTimer.lastTickTimestamp) / 1000);
-        setLiveElapsedSeconds(activeTimer.accumulatedSeconds + delta);
-      }, 500);
+      timerIntervalRef.current = setInterval(syncTime, 500);
     } else {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     }
 
+    // Immediately recalculate on returning from background or focusing window
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncTime();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', syncTime);
+
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', syncTime);
     };
   }, [activeTimer]);
 
@@ -136,6 +197,7 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
       startedAt: startedIso,
       accumulatedSeconds: 0,
       lastTickTimestamp: Date.now(),
+      dateKey: todayKey,
     };
     setActiveTimer(newTimer);
     setLiveElapsedSeconds(0);
@@ -144,25 +206,28 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
   const handlePauseTimer = () => {
     if (!activeTimer || activeTimer.status !== 'running') return;
     const nowMs = Date.now();
-    const delta = Math.floor((nowMs - activeTimer.lastTickTimestamp) / 1000);
+    const delta = Math.max(0, Math.floor((nowMs - activeTimer.lastTickTimestamp) / 1000));
     const newAccum = activeTimer.accumulatedSeconds + delta;
 
-    setActiveTimer({
+    const pausedTimer: ActiveTimerState = {
       ...activeTimer,
       status: 'paused',
       accumulatedSeconds: newAccum,
       lastTickTimestamp: nowMs,
-    });
+    };
+    setActiveTimer(pausedTimer);
     setLiveElapsedSeconds(newAccum);
   };
 
   const handleResumeTimer = () => {
     if (!activeTimer || activeTimer.status !== 'paused') return;
-    setActiveTimer({
+    const resumedTimer: ActiveTimerState = {
       ...activeTimer,
       status: 'running',
       lastTickTimestamp: Date.now(),
-    });
+    };
+    setActiveTimer(resumedTimer);
+    setLiveElapsedSeconds(resumedTimer.accumulatedSeconds);
   };
 
   const handleStopTimer = async () => {
@@ -171,15 +236,16 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     let finalSeconds = activeTimer.accumulatedSeconds;
     if (activeTimer.status === 'running') {
       const nowMs = Date.now();
-      const delta = Math.floor((nowMs - activeTimer.lastTickTimestamp) / 1000);
+      const delta = Math.max(0, Math.floor((nowMs - activeTimer.lastTickTimestamp) / 1000));
       finalSeconds += delta;
     }
 
     const endedIso = new Date().toISOString();
     const habit = habits.find((h) => h.id === activeTimer.habitId);
     const targetSeconds = habit?.target_duration_seconds ?? 0;
+    const timerToSave = activeTimer;
 
-    // Reset local timer state
+    // Reset local timer state & storage
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     setActiveTimer(null);
     setLiveElapsedSeconds(0);
@@ -189,9 +255,9 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
       try {
         await recordHabitSession(
           profile.id,
-          habit ? habit.id : activeTimer.habitId,
+          habit ? habit.id : timerToSave.habitId,
           todayKey,
-          activeTimer.startedAt,
+          timerToSave.startedAt,
           endedIso,
           finalSeconds,
           targetSeconds

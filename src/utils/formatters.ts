@@ -17,11 +17,20 @@ export function capitalize(str: string): string {
 }
 
 /**
- * Returns YYYY-MM-DD string format using the centralized application clock
+ * Formats Date object to local YYYY-MM-DD string format
+ */
+export function formatDateKey(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns YYYY-MM-DD string format for today using the centralized application clock
  */
 export function getTodayDateString(): string {
-  const today = clock.now();
-  return today.toISOString().split('T')[0];
+  return formatDateKey(clock.now());
 }
 
 /**

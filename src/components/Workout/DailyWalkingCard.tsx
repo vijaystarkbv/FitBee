@@ -8,7 +8,7 @@ import {
   calculateWalkingCalories,
 } from '../../services/walkingService';
 import { useClock } from '../../hooks/useClock';
-import { formatNumber } from '../../utils/formatters';
+import { formatNumber, formatDateKey } from '../../utils/formatters';
 
 interface DailyWalkingCardProps {
   profile?: Profile | null;
@@ -17,7 +17,7 @@ interface DailyWalkingCardProps {
 
 export const DailyWalkingCard: React.FC<DailyWalkingCardProps> = ({ profile, userId: propUserId }) => {
   const { now } = useClock();
-  const dateStr = useMemo(() => now.toISOString().split('T')[0], [now]);
+  const dateStr = useMemo(() => formatDateKey(now), [now]);
 
   const effectiveUserId = profile?.id || propUserId || '';
   const heightCm = profile?.height_cm;

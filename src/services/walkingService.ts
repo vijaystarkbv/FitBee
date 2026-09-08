@@ -1,4 +1,3 @@
-import { supabase } from './supabaseClient.ts';
 import type { DailyWalkingLog, WalkingInputMode } from '../types/database.types.ts';
 
 /**
@@ -83,27 +82,7 @@ function saveLocalStore(userId: string, store: Record<string, DailyWalkingLog>):
 export async function getDailyWalkingLog(userId: string, date: string): Promise<DailyWalkingLog | null> {
   if (!userId || !date) return null;
 
-  // 1. Try Supabase
-  try {
-    const { data, error } = await supabase
-      .from('daily_walking_logs')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('date', date)
-      .maybeSingle();
-
-    if (!error && data) {
-      // Sync local cache
-      const store = getLocalStore(userId);
-      store[date] = data as DailyWalkingLog;
-      saveLocalStore(userId, store);
-      return data as DailyWalkingLog;
-    }
-  } catch (err) {
-    console.warn('Supabase walking fetch error, checking local store:', err);
-  }
-
-  // 2. Fallback to LocalStorage
+  // Retrieve from LocalStorage store
   const store = getLocalStore(userId);
   return store[date] || null;
 }
@@ -117,7 +96,7 @@ export interface SaveWalkingPayload {
 
 /**
  * Saves or updates a daily walking log for the user and date.
- * Uses an upsert strategy so existing records for that day are overwritten, preventing duplicate records.
+ * Persists deterministically in localStorage and broadcasts an update event.
  */
 export async function saveDailyWalkingLog(
   userId: string,
@@ -138,7 +117,7 @@ export async function saveDailyWalkingLog(
     updated_at: nowIso,
   };
 
-  // 1. Persist to local cache immediately
+  // Persist to local store
   const store = getLocalStore(userId);
   if (store[date]?.id) {
     record.id = store[date].id;
@@ -146,35 +125,6 @@ export async function saveDailyWalkingLog(
   }
   store[date] = record;
   saveLocalStore(userId, store);
-
-  // 2. Upsert to Supabase
-  try {
-    const { data, error } = await supabase
-      .from('daily_walking_logs')
-      .upsert(
-        {
-          user_id: userId,
-          date,
-          steps: record.steps,
-          distance_km: record.distance_km,
-          calories_burned: record.calories_burned,
-          input_mode: record.input_mode,
-          updated_at: nowIso,
-        },
-        { onConflict: 'user_id,date' }
-      )
-      .select()
-      .maybeSingle();
-
-    if (!error && data) {
-      store[date] = data as DailyWalkingLog;
-      saveLocalStore(userId, store);
-      notifyWalkingUpdated(data as DailyWalkingLog);
-      return data as DailyWalkingLog;
-    }
-  } catch (err) {
-    console.warn('Supabase walking upsert error, saved locally:', err);
-  }
 
   notifyWalkingUpdated(record);
   return record;

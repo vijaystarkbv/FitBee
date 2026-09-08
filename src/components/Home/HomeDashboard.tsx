@@ -5,6 +5,7 @@ import { Profile, NutritionLog, DailyWalkingLog } from '../../types/database.typ
 import { getDailyWalkingLog } from '../../services/walkingService';
 import { getDaysSinceLastWeightUpdate } from '../../services/nutritionTargetService';
 import { useClock } from '../../hooks/useClock';
+import { formatDateKey } from '../../utils/formatters';
 import './home.css';
 
 interface HomeDashboardProps {
@@ -28,7 +29,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onNavigateSettings,
 }) => {
   const { now } = useClock();
-  const dateStr = useMemo(() => now.toISOString().split('T')[0], [now]);
+  const dateStr = useMemo(() => formatDateKey(now), [now]);
   const greeting = useMemo(() => getGreeting(), []);
   const displayName = profile.display_name || 'there';
 

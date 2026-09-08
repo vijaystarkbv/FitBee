@@ -6,10 +6,10 @@ export interface Env {
 }
 
 const VERIFIED_MODELS = [
-  'gemini-flash-lite-latest',
   'gemini-3.6-flash',
-  'gemini-3.5-flash-lite',
+  'gemini-3.5-flash',
   'gemini-flash-latest',
+  'gemini-flash-lite-latest',
 ];
 
 /**
@@ -43,8 +43,9 @@ async function callGemini(
       });
 
       if (!response.ok) {
-        // Do not leak apiKey or raw API error with sensitive query string
-        lastError = new Error(`Gemini model ${modelName} returned HTTP ${response.status}`);
+        const errBody = await response.text().catch(() => '');
+        console.error(`Gemini model ${modelName} error (${response.status}):`, errBody);
+        lastError = new Error(`Gemini model ${modelName} returned HTTP ${response.status}: ${errBody}`);
         continue;
       }
 
@@ -111,7 +112,10 @@ export default {
         // Log generic error on worker side without secrets
         console.error('FitBee Worker Gemini API error:', err?.message || 'Unknown error');
         return new Response(
-          JSON.stringify({ error: 'Failed to generate response from AI service.' }),
+          JSON.stringify({
+            error: 'Failed to generate response from AI service.',
+            details: String(err?.message || '').replace(/[a-zA-Z0-9_-]{35,}/g, '[REDACTED]'),
+          }),
           {
             status: 502,
             headers: { 'Content-Type': 'application/json' },

@@ -5,6 +5,7 @@ import {
   getUserNutritionTargets,
   calculateNutritionTargetsScore,
 } from './nutritionHistoryService';
+import { fetchUserPlannedSchedule } from './workoutHistoryService';
 
 export type StreakDayStatus = 'FULL' | 'PARTIAL' | 'MISSED' | 'FROZEN';
 
@@ -180,24 +181,13 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
   let milestonesAwarded = profile.streak_milestones_awarded ?? local.milestonesAwarded;
   const declinedDates = new Set<string>(local.declinedDates);
 
-  // 1. Fetch user's active workout templates & days
-  const { data: tmplData } = await supabase
-    .from('workout_templates')
-    .select('*, workout_template_days(*)')
-    .eq('user_id', userId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false });
-
-  const activeTemplate = tmplData?.[0];
-  const templateDays = activeTemplate?.workout_template_days || [];
-
+  // 1. Fetch user's active planned workout schedule
+  const plannedDays = await fetchUserPlannedSchedule(userId);
   const scheduledDayNames = new Set<string>(
-    templateDays.map((td: any) => (td.day_name || td.name || '').trim().toLowerCase())
+    plannedDays.map((d) => d.trim().toLowerCase())
   );
 
   const isScheduledRestDay = (d: Date): boolean => {
-    // If no template days scheduled, all days satisfy the workout requirement
-    if (scheduledDayNames.size === 0) return true;
     const weekdayName = WEEKDAY_NAMES[d.getDay()].toLowerCase();
     return !scheduledDayNames.has(weekdayName);
   };
@@ -219,12 +209,16 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     nutritionMap[log.date] = log;
   });
 
-  // 3. Fetch past 60 days of workout logs & sets
+  // 3. Fetch past 60 days of workout logs & sets (with 1-day timezone buffer)
+  const queryStartDate = new Date(startDate);
+  queryStartDate.setDate(queryStartDate.getDate() - 1);
+  const queryStartStr = formatDateKey(queryStartDate);
+
   const { data: workoutLogs } = await supabase
     .from('workout_logs')
     .select('*, workout_log_sets(*)')
     .eq('user_id', userId)
-    .gte('start_time', startDateStr)
+    .gte('start_time', `${queryStartStr}T00:00:00.000Z`)
     .order('start_time', { ascending: true });
 
   const workoutMap: Record<string, boolean> = {};
@@ -263,14 +257,8 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     const isFuture = d > now && !isToday;
     const restDay = isScheduledRestDay(d);
 
-    // Check testing override first, then logs/rest day
-    let workoutComplete = false;
-    const testWorkoutOverride = localStorage.getItem(`fitbee_test_workout_${dateStr}`);
-    if (testWorkoutOverride !== null) {
-      workoutComplete = testWorkoutOverride === 'true';
-    } else {
-      workoutComplete = restDay || Boolean(workoutMap[dateStr]);
-    }
+    // Workout requirement: real DB logs or scheduled rest day
+    const workoutComplete = restDay || Boolean(workoutMap[dateStr]);
 
     // Nutrition requirement: overall Nutrition Targets score >= 85%
     const nutLog = nutritionMap[dateStr];

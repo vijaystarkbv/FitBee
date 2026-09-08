@@ -14,11 +14,32 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ProfileSettings } from './components/Profile/ProfileSettings';
 import './components/Home/home.css';
 
+const ACTIVE_TAB_KEY = 'fitbee_active_tab';
+
+function getInitialTab(): NavTab {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem(ACTIVE_TAB_KEY) as NavTab | null;
+      if (saved && ['home', 'workout', 'meal', 'habits', 'settings'].includes(saved)) {
+        return saved;
+      }
+    } catch (_) {}
+  }
+  return 'home';
+}
+
 export const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [activeTab, setActiveTabState] = useState<NavTab>(getInitialTab);
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const setActiveTab = (tab: NavTab) => {
+    setActiveTabState(tab);
+    try {
+      localStorage.setItem(ACTIVE_TAB_KEY, tab);
+    } catch (_) {}
+  };
 
   // Application Data States
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -27,10 +48,12 @@ export const App: React.FC = () => {
   const [settingsSubView, setSettingsSubView] = useState<'main' | 'profile'>('main');
 
   useEffect(() => {
+    let prevUserId: string | null = null;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
-        setActiveTab('home');
+        prevUserId = session.user.id;
         fetchUserData(session.user.id, true);
       } else {
         setLoading(false);
@@ -39,12 +62,20 @@ export const App: React.FC = () => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       if (session) {
-        setActiveTab('home');
-        fetchUserData(session.user.id);
+        const isNewUser = session.user.id !== prevUserId;
+        prevUserId = session.user.id;
+        if (event === 'SIGNED_IN' && isNewUser) {
+          const saved = getInitialTab();
+          setActiveTabState(saved);
+        }
+        if (isNewUser) {
+          fetchUserData(session.user.id);
+        }
       } else {
+        prevUserId = null;
         setLoading(false);
       }
     });
