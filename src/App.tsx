@@ -12,6 +12,7 @@ import { Profile, NutritionLog, MealEntry, ParsedFoodItem } from './types/databa
 import { getOrCreateTodayNutritionLog, saveMealEntry, getTodayMeals } from './services/nutritionService';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ProfileSettings } from './components/Profile/ProfileSettings';
+import { NotificationSettings } from './components/Settings/NotificationSettings';
 import { initRealtime, cleanupRealtime, REALTIME_EVENTS } from './services/realtimeService';
 import './components/Home/home.css';
 
@@ -20,6 +21,11 @@ const ACTIVE_TAB_KEY = 'fitbee_active_tab';
 function getInitialTab(): NavTab {
   if (typeof window !== 'undefined') {
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab') as NavTab | null;
+      if (tabParam && ['home', 'workout', 'meal', 'habits', 'settings'].includes(tabParam)) {
+        return tabParam;
+      }
       const saved = localStorage.getItem(ACTIVE_TAB_KEY) as NavTab | null;
       if (saved && ['home', 'workout', 'meal', 'habits', 'settings'].includes(saved)) {
         return saved;
@@ -46,7 +52,24 @@ export const App: React.FC = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayNutrition, setTodayNutrition] = useState<NutritionLog | null>(null);
   const [todayMeals, setTodayMeals] = useState<MealEntry[]>([]);
-  const [settingsSubView, setSettingsSubView] = useState<'main' | 'profile'>('main');
+  const [settingsSubView, setSettingsSubView] = useState<'main' | 'profile' | 'notifications'>('main');
+
+  // Listen for deep link events from the service worker push notification clicks
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    const handleSwMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'FITBEE_NAVIGATE') {
+        const url = String(e.data.url || '');
+        if (url.includes('habits')) setActiveTab('habits');
+        else if (url.includes('workout')) setActiveTab('workout');
+        else if (url.includes('meal')) setActiveTab('meal');
+        else if (url.includes('settings')) setActiveTab('settings');
+        else setActiveTab('home');
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+  }, []);
 
   useEffect(() => {
     let prevUserId: string | null = null;
@@ -261,6 +284,11 @@ export const App: React.FC = () => {
               onSignOut={() => supabase.auth.signOut()}
               onBack={() => setSettingsSubView('main')}
             />
+          ) : settingsSubView === 'notifications' ? (
+            <NotificationSettings
+              profile={profile}
+              onBack={() => setSettingsSubView('main')}
+            />
           ) : (
           <div style={{ maxWidth: 520, margin: '0 auto', padding: '20px 24px 100px' }}>
             {/* Back button */}
@@ -337,15 +365,19 @@ export const App: React.FC = () => {
                 </svg>
               </div>
 
-              <div className="hd-settings-item" style={{ cursor: 'default', opacity: 0.5 }}>
+              <div
+                className="hd-settings-item"
+                onClick={() => setSettingsSubView('notifications')}
+                style={{ cursor: 'pointer' }}
+              >
                 <div className="hd-settings-item-left">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C8D89" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M12 6v6l4 2" />
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                   </svg>
                   <div>
                     <p className="hd-settings-item-label">Notifications</p>
-                    <p className="hd-settings-item-desc">Coming soon</p>
+                    <p className="hd-settings-item-desc">Reminders for habits, food & workouts</p>
                   </div>
                 </div>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

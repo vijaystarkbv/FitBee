@@ -1,0 +1,16 @@
+{
+  "name": "FitBee - Personal Fitness & Nutrition Tracker",
+  "short_name": "FitBee",
+  "description": "Context-aware fitness, nutrition, and habit tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#5C8D89",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

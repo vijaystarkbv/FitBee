@@ -3,8 +3,16 @@
     "name": "fitbee",
     "main": "src/worker.ts",
     "compatibility_date": "2026-09-07",
+    "compatibility_flags": [
+        "nodejs_compat"
+    ],
     "assets": {
         "directory": "./dist",
         "not_found_handling": "single-page-application"
+    },
+    "triggers": {
+        "crons": [
+            "0 * * * *"
+        ]
     }
 }
