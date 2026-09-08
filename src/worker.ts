@@ -367,14 +367,13 @@ async function runScheduledNotifications(env: Env): Promise<{
   };
 
   try {
-    // 1. Fetch users with notifications enabled in user_settings
-    const { data: userSettingsList, error: settingsError } = await supabase
-      .from('user_settings')
-      .select('user_id, notifications_enabled, habit_notifications_enabled, food_notifications_enabled, workout_notifications_enabled, timezone')
-      .eq('notifications_enabled', true);
+    // 1. Fetch eligible candidates via SECURITY DEFINER RPC (bypasses RLS for worker cron)
+    const { data: userSettingsList, error: settingsError } = await supabase.rpc(
+      'get_notification_cron_candidates'
+    );
 
     if (settingsError || !userSettingsList) {
-      results.errors.push(settingsError || 'Failed to fetch user_settings');
+      results.errors.push(settingsError || 'Failed to fetch notification candidates');
       return results;
     }
 
@@ -386,7 +385,7 @@ async function runScheduledNotifications(env: Env): Promise<{
       22: '22:00',
     };
 
-    for (const settings of userSettingsList) {
+    for (const settings of (userSettingsList as any[])) {
       try {
         // Must have at least one category turned on
         if (
@@ -404,18 +403,6 @@ async function runScheduledNotifications(env: Env): Promise<{
 
         // If current hour is not one of the 5 windows (08:00, 12:00, 15:00, 19:00, 22:00), skip
         if (!matchingSlot) {
-          results.skippedCount++;
-          continue;
-        }
-
-        // Check if user has active push subscriptions
-        const { count: subCount } = await supabase
-          .from('push_subscriptions')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', settings.user_id)
-          .eq('is_active', true);
-
-        if (!subCount || subCount === 0) {
           results.skippedCount++;
           continue;
         }
