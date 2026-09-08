@@ -6,6 +6,7 @@ import {
 } from '../../services/habitService';
 import { formatDateKey } from '../../services/streakService';
 import { HabitDayDetailModal } from './HabitDayDetailModal';
+import { REALTIME_EVENTS } from '../../services/realtimeService';
 
 interface HabitStreakCalendarProps {
   habit: Habit;
@@ -55,6 +56,18 @@ export const HabitStreakCalendar: React.FC<HabitStreakCalendarProps> = ({
 
   useEffect(() => {
     loadMonth();
+
+    const handleHabitUpdate = () => {
+      loadMonth();
+    };
+
+    window.addEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitUpdate);
+    window.addEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitUpdate);
+
+    return () => {
+      window.removeEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitUpdate);
+      window.removeEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitUpdate);
+    };
   }, [loadMonth]);
 
   const handlePrevMonth = () => {

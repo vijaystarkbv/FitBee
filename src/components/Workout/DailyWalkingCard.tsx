@@ -9,6 +9,7 @@ import {
 } from '../../services/walkingService';
 import { useClock } from '../../hooks/useClock';
 import { formatNumber, formatDateKey } from '../../utils/formatters';
+import { REALTIME_EVENTS } from '../../services/realtimeService';
 
 interface DailyWalkingCardProps {
   profile?: Profile | null;
@@ -67,7 +68,15 @@ export const DailyWalkingCard: React.FC<DailyWalkingCardProps> = ({ profile, use
 
   useEffect(() => {
     loadDayLog();
-  }, [loadDayLog]);
+
+    const handleWalkingSync = () => {
+      if (!isEditing) {
+        loadDayLog();
+      }
+    };
+    window.addEventListener(REALTIME_EVENTS.WALKING_UPDATED, handleWalkingSync);
+    return () => window.removeEventListener(REALTIME_EVENTS.WALKING_UPDATED, handleWalkingSync);
+  }, [loadDayLog, isEditing]);
 
   // Real-time deterministic derivations
   const currentNumericSteps = parseFloat(stepsInput) || 0;

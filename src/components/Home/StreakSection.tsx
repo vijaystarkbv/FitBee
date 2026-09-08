@@ -11,6 +11,7 @@ import { StreakCalendar } from './StreakCalendar';
 import { StreakFreezeModal } from './StreakFreezeModal';
 import { useClock } from '../../hooks/useClock';
 import { ErrorBoundary } from '../common/ErrorBoundary';
+import { REALTIME_EVENTS } from '../../services/realtimeService';
 
 interface StreakSectionProps {
   profile: Profile;
@@ -36,6 +37,18 @@ export const StreakSection: React.FC<StreakSectionProps> = ({ profile }) => {
 
   useEffect(() => {
     fetchStreak();
+
+    const handleStreakSync = () => {
+      fetchStreak();
+    };
+
+    window.addEventListener(REALTIME_EVENTS.WORKOUT_UPDATED, handleStreakSync);
+    window.addEventListener(REALTIME_EVENTS.WALKING_UPDATED, handleStreakSync);
+
+    return () => {
+      window.removeEventListener(REALTIME_EVENTS.WORKOUT_UPDATED, handleStreakSync);
+      window.removeEventListener(REALTIME_EVENTS.WALKING_UPDATED, handleStreakSync);
+    };
   }, [fetchStreak]);
 
   const handleUseFreeze = async () => {

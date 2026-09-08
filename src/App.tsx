@@ -12,6 +12,7 @@ import { Profile, NutritionLog, MealEntry, ParsedFoodItem } from './types/databa
 import { getOrCreateTodayNutritionLog, saveMealEntry, getTodayMeals } from './services/nutritionService';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ProfileSettings } from './components/Profile/ProfileSettings';
+import { initRealtime, cleanupRealtime, REALTIME_EVENTS } from './services/realtimeService';
 import './components/Home/home.css';
 
 const ACTIVE_TAB_KEY = 'fitbee_active_tab';
@@ -82,6 +83,32 @@ export const App: React.FC = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Initialize and tear down Realtime subscription for cross-device synchronization
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) {
+      cleanupRealtime();
+      return;
+    }
+
+    const unsubscribe = initRealtime(userId);
+
+    const handleDataUpdate = () => {
+      fetchUserData(userId, false);
+    };
+
+    window.addEventListener(REALTIME_EVENTS.NUTRITION_UPDATED, handleDataUpdate);
+    window.addEventListener(REALTIME_EVENTS.WORKOUT_UPDATED, handleDataUpdate);
+    window.addEventListener(REALTIME_EVENTS.WEIGHT_UPDATED, handleDataUpdate);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener(REALTIME_EVENTS.NUTRITION_UPDATED, handleDataUpdate);
+      window.removeEventListener(REALTIME_EVENTS.WORKOUT_UPDATED, handleDataUpdate);
+      window.removeEventListener(REALTIME_EVENTS.WEIGHT_UPDATED, handleDataUpdate);
+    };
+  }, [session?.user?.id]);
 
   const fetchUserData = async (userId: string, isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);

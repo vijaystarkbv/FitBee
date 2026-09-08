@@ -14,6 +14,7 @@ import { CreateHabitModal } from './CreateHabitModal';
 import { EditHabitModal } from './EditHabitModal';
 import { HabitStreakCalendar } from './HabitStreakCalendar';
 import { HabitFourWeekChart } from './HabitFourWeekChart';
+import { REALTIME_EVENTS } from '../../services/realtimeService';
 import '../Home/home.css';
 
 interface DailyHitlistPageProps {
@@ -131,6 +132,23 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
 
   useEffect(() => {
     loadAllData();
+  }, [loadAllData]);
+
+  // Listen for cross-device Realtime updates to habits, logs, and timer sessions
+  useEffect(() => {
+    const handleHabitsSync = () => {
+      loadAllData();
+    };
+
+    window.addEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitsSync);
+    window.addEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitsSync);
+    window.addEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleHabitsSync);
+
+    return () => {
+      window.removeEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitsSync);
+      window.removeEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitsSync);
+      window.removeEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleHabitsSync);
+    };
   }, [loadAllData]);
 
   // ─────────────────────────────────────────────────────────────

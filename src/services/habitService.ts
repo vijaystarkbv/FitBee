@@ -315,17 +315,20 @@ export async function toggleChecklistHabit(
   saveLocalStore(userId, local);
 
   try {
-    await supabase.from('habit_logs').upsert({
-      id: updatedLog.id,
-      user_id: userId,
-      habit_id: habitId,
-      date: dateStr,
-      is_completed: isCompleted,
-      target_duration_seconds: targetSnapshot,
-      actual_duration_seconds: 0,
-      completed_at: updatedLog.completed_at,
-      updated_at: updatedLog.updated_at,
-    });
+    await supabase.from('habit_logs').upsert(
+      {
+        id: updatedLog.id,
+        user_id: userId,
+        habit_id: habitId,
+        date: dateStr,
+        is_completed: isCompleted,
+        target_duration_seconds: targetSnapshot,
+        actual_duration_seconds: 0,
+        completed_at: updatedLog.completed_at,
+        updated_at: updatedLog.updated_at,
+      },
+      { onConflict: 'habit_id,date' }
+    );
   } catch (err) {
     console.warn('Could not upsert checklist log to Supabase:', err);
   }
@@ -404,17 +407,20 @@ export async function recordHabitSession(
         duration_seconds: durationSeconds,
         created_at: newSession.created_at,
       }),
-      supabase.from('habit_logs').upsert({
-        id: updatedLog.id,
-        user_id: userId,
-        habit_id: habitId,
-        date: dateStr,
-        is_completed: isCompleted,
-        target_duration_seconds: habitTargetSeconds,
-        actual_duration_seconds: totalDurationToday,
-        completed_at: updatedLog.completed_at,
-        updated_at: updatedLog.updated_at,
-      }),
+      supabase.from('habit_logs').upsert(
+        {
+          id: updatedLog.id,
+          user_id: userId,
+          habit_id: habitId,
+          date: dateStr,
+          is_completed: isCompleted,
+          target_duration_seconds: habitTargetSeconds,
+          actual_duration_seconds: totalDurationToday,
+          completed_at: updatedLog.completed_at,
+          updated_at: updatedLog.updated_at,
+        },
+        { onConflict: 'habit_id,date' }
+      ),
     ]);
   } catch (err) {
     console.warn('Could not record habit session to Supabase, local saved:', err);

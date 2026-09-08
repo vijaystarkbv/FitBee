@@ -14,6 +14,7 @@ import { DailyHitlistPage } from './DailyHitlistPage';
 import { fetchUserHabits, fetchHabitDataForDate } from '../../services/habitService';
 import { Habit, HabitLog, HabitSession } from '../../types/database.types';
 import { useClock } from '../../hooks/useClock';
+import { REALTIME_EVENTS } from '../../services/realtimeService';
 import '../Home/home.css';
 
 interface HabitsPageProps {
@@ -70,6 +71,23 @@ export const HabitsPage: React.FC<HabitsPageProps> = ({ profile, todayNutrition,
   useEffect(() => {
     fetchStreak();
     loadHitlistPreview();
+
+    const handleSync = () => {
+      fetchStreak();
+      loadHitlistPreview();
+    };
+
+    window.addEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleSync);
+    window.addEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleSync);
+    window.addEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleSync);
+    window.addEventListener(REALTIME_EVENTS.WORKOUT_UPDATED, handleSync);
+
+    return () => {
+      window.removeEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleSync);
+      window.removeEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleSync);
+      window.removeEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleSync);
+      window.removeEventListener(REALTIME_EVENTS.WORKOUT_UPDATED, handleSync);
+    };
   }, [fetchStreak, loadHitlistPreview]);
 
   const formattedToday = now.toLocaleDateString('en-US', {

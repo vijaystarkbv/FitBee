@@ -6,6 +6,7 @@ import {
   HabitWeekDayPoint,
   formatDuration,
 } from '../../services/habitService';
+import { REALTIME_EVENTS } from '../../services/realtimeService';
 
 interface HabitFourWeekChartProps {
   habit: Habit;
@@ -48,6 +49,18 @@ export const HabitFourWeekChart: React.FC<HabitFourWeekChartProps> = ({
 
   useEffect(() => {
     loadData();
+
+    const handleHabitUpdate = () => {
+      loadData();
+    };
+
+    window.addEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitUpdate);
+    window.addEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitUpdate);
+
+    return () => {
+      window.removeEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitUpdate);
+      window.removeEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitUpdate);
+    };
   }, [loadData]);
 
   if (loading) {
