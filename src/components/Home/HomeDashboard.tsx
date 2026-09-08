@@ -128,7 +128,13 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       {daysSinceWeightUpdate >= 14 && (
         <div
           style={{
-            margin: '0 16px 16px',
+            maxWidth: 520,
+            margin: '0 auto 16px',
+            padding: '0 24px',
+          }}
+        >
+         <div
+          style={{
             padding: '16px',
             background: 'linear-gradient(135deg, #F0FDFA 0%, #FFFFFF 100%)',
             border: '1.5px solid #5C8D89',
@@ -205,6 +211,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </svg>
             </button>
           </div>
+        </div>
         </div>
       )}
 
