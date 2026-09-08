@@ -59,6 +59,31 @@ export interface WeeklyAverages {
   fatPercent: number;
 }
 
+export type AdherenceClassification = 'HIGH_ADHERENCE' | 'PARTIAL_ADHERENCE' | 'LOW_ADHERENCE' | 'INSUFFICIENT_DATA';
+
+export interface WeeklyAdherenceSummary {
+  weekIndex: number;
+  weekLabel: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  daysLogged: number;
+  daysInWeek: number;
+  targetCalories: number;
+  targetProtein: number;
+  targetCarbs: number;
+  targetFat: number;
+  actualAvgCalories: number;
+  actualAvgProtein: number;
+  actualAvgCarbs: number;
+  actualAvgFat: number;
+  calorieAdherenceRatio: number;
+  proteinAdherenceRatio: number;
+  carbsAdherenceRatio: number;
+  fatAdherenceRatio: number;
+  adherencePercentStr: string;
+  classification: AdherenceClassification;
+}
+
 const SHORT_DAY_LABELS = ['SU', 'M', 'T', 'W', 'TH', 'F', 'S'];
 const FULL_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -490,6 +515,172 @@ export function buildMonthWeeklySummaries(
     // Advance currentRef to the following Monday
     currentRef = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate() + 1);
   }
+
+  return summaries;
+}
+
+/**
+ * Calculates compact weekly nutrition adherence summaries for an evaluation period.
+ * Strictly adheres to:
+ * - Slicing period into weekly evaluation segments matching check-in interval
+ * - Resolving applicable targets per week (preserving historical target adjustments)
+ * - Filtering strictly for logged days (unlogged days are NOT treated as 0g)
+ * - Computing uncapped adherence ratios (e.g. 114.5% if overeating)
+ * - Deterministic product classification: HIGH_ADHERENCE, PARTIAL_ADHERENCE, LOW_ADHERENCE, INSUFFICIENT_DATA
+ */
+export async function calculateWeeklyAdherenceSummaries(
+  userId: string,
+  startDateStr: string,
+  endDateStr: string,
+  profile: Profile,
+  preloadedNutritionMap?: Record<string, NutritionLog>
+): Promise<WeeklyAdherenceSummary[]> {
+  if (!startDateStr || !endDateStr) return [];
+
+  // Ensure chronological order
+  let startStr = startDateStr;
+  let endStr = endDateStr;
+  if (startStr > endStr) {
+    const tmp = startStr;
+    startStr = endStr;
+    endStr = tmp;
+  }
+
+  // Fetch nutrition logs for range if not pre-provided
+  const nutritionMap = preloadedNutritionMap || (await fetchNutritionLogsRange(userId, startStr, endStr));
+
+  // Build daily calendar list from startStr to endStr
+  const [sy, sm, sd] = startStr.split('-').map(Number);
+  const [ey, em, ed] = endStr.split('-').map(Number);
+
+  const curDate = new Date(sy, sm - 1, sd);
+  const finalDate = new Date(ey, em - 1, ed);
+
+  const allDateKeys: string[] = [];
+  while (curDate <= finalDate) {
+    allDateKeys.push(formatDateKey(curDate));
+    curDate.setDate(curDate.getDate() + 1);
+  }
+
+  if (allDateKeys.length === 0) return [];
+
+  // Chunk dates into 7-day segments
+  const chunks: string[][] = [];
+  for (let i = 0; i < allDateKeys.length; i += 7) {
+    chunks.push(allDateKeys.slice(i, i + 7));
+  }
+
+  const summaries: WeeklyAdherenceSummary[] = [];
+
+  chunks.forEach((chunkDates, index) => {
+    const weekIndex = index + 1;
+    const weekStart = chunkDates[0];
+    const weekEnd = chunkDates[chunkDates.length - 1];
+    const daysInWeek = chunkDates.length;
+
+    // Collect valid logs for chunk
+    const validLogs: NutritionLog[] = [];
+    let targetCalSum = 0;
+    let targetPSum = 0;
+    let targetCSum = 0;
+    let targetFSum = 0;
+
+    chunkDates.forEach((dStr) => {
+      const dayTarget = getUserNutritionTargets(profile, dStr);
+      targetCalSum += dayTarget.calories || 2000;
+      targetPSum += dayTarget.protein || 120;
+      targetCSum += dayTarget.carbs || 250;
+      targetFSum += dayTarget.fat || 55;
+
+      const log = nutritionMap[dStr];
+      if (
+        log &&
+        ((log.total_calories ?? 0) > 0 ||
+          (log.total_protein ?? 0) > 0 ||
+          (log.total_carbs ?? 0) > 0 ||
+          (log.total_fat ?? 0) > 0)
+      ) {
+        validLogs.push(log);
+      }
+    });
+
+    const daysLogged = validLogs.length;
+
+    // Averages for target across chunk
+    const targetCalories = Math.round(targetCalSum / daysInWeek);
+    const targetProtein = Math.round(targetPSum / daysInWeek);
+    const targetCarbs = Math.round(targetCSum / daysInWeek);
+    const targetFat = Math.round(targetFSum / daysInWeek);
+
+    // Actual averages strictly over days logged
+    let actualAvgCalories = 0;
+    let actualAvgProtein = 0;
+    let actualAvgCarbs = 0;
+    let actualAvgFat = 0;
+
+    if (daysLogged > 0) {
+      const sumCal = validLogs.reduce((acc, l) => acc + (Number(l.total_calories) || 0), 0);
+      const sumP = validLogs.reduce((acc, l) => acc + (Number(l.total_protein) || 0), 0);
+      const sumC = validLogs.reduce((acc, l) => acc + (Number(l.total_carbs) || 0), 0);
+      const sumF = validLogs.reduce((acc, l) => acc + (Number(l.total_fat) || 0), 0);
+
+      actualAvgCalories = Math.round(sumCal / daysLogged);
+      actualAvgProtein = Math.round(sumP / daysLogged);
+      actualAvgCarbs = Math.round(sumC / daysLogged);
+      actualAvgFat = Math.round(sumF / daysLogged);
+    }
+
+    // Adherence ratios (uncapped)
+    const calorieAdherenceRatio = targetCalories > 0 ? actualAvgCalories / targetCalories : 1;
+    const proteinAdherenceRatio = targetProtein > 0 ? actualAvgProtein / targetProtein : 1;
+    const carbsAdherenceRatio = targetCarbs > 0 ? actualAvgCarbs / targetCarbs : 1;
+    const fatAdherenceRatio = targetFat > 0 ? actualAvgFat / targetFat : 1;
+
+    const adherencePercentStr = `${(calorieAdherenceRatio * 100).toFixed(1)}%`;
+
+    // Classification
+    // Insufficient if 0 days logged or fewer than half the days in segment (minimum 4 for full week)
+    const minRequiredDays = Math.min(4, Math.ceil(daysInWeek / 2));
+    let classification: AdherenceClassification = 'INSUFFICIENT_DATA';
+
+    if (daysLogged === 0 || daysLogged < minRequiredDays) {
+      classification = 'INSUFFICIENT_DATA';
+    } else if (calorieAdherenceRatio >= 0.90 && calorieAdherenceRatio <= 1.10) {
+      classification = 'HIGH_ADHERENCE';
+    } else if (
+      (calorieAdherenceRatio >= 0.80 && calorieAdherenceRatio < 0.90) ||
+      (calorieAdherenceRatio > 1.10 && calorieAdherenceRatio <= 1.25)
+    ) {
+      classification = 'PARTIAL_ADHERENCE';
+    } else {
+      classification = 'LOW_ADHERENCE';
+    }
+
+    const weekLabel = `Week ${weekIndex} (${weekStart} to ${weekEnd})`;
+
+    summaries.push({
+      weekIndex,
+      weekLabel,
+      startDate: weekStart,
+      endDate: weekEnd,
+      daysLogged,
+      daysInWeek,
+      targetCalories,
+      targetProtein,
+      targetCarbs,
+      targetFat,
+      actualAvgCalories,
+      actualAvgProtein,
+      actualAvgCarbs,
+      actualAvgFat,
+      calorieAdherenceRatio: Number(calorieAdherenceRatio.toFixed(3)),
+      proteinAdherenceRatio: Number(proteinAdherenceRatio.toFixed(3)),
+      carbsAdherenceRatio: Number(carbsAdherenceRatio.toFixed(3)),
+      fatAdherenceRatio: Number(fatAdherenceRatio.toFixed(3)),
+      adherencePercentStr,
+      classification,
+    });
+  });
 
   return summaries;
 }

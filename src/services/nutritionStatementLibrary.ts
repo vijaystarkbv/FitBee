@@ -101,6 +101,36 @@ export const PREDEFINED_STATEMENTS: Record<string, PredefinedStatement> = {
     shortLabel: 'Stable trend',
     text: 'Your bodyweight has remained stable, supporting your maintenance goal.',
   },
+  insufficient_adherence: {
+    id: 'insufficient_adherence',
+    category: 'progress',
+    shortLabel: 'Insufficient adherence to evaluate',
+    text: 'Your logged intake differed substantially from your recommended target on multiple days, so your current target cannot yet be reliably evaluated.',
+  },
+  keep_target_collect_data: {
+    id: 'keep_target_collect_data',
+    category: 'calories',
+    shortLabel: 'Keep target and collect data',
+    text: 'Maintain your current nutrition targets and continue logging consistently to build an accurate baseline.',
+  },
+  insufficient_logging_data: {
+    id: 'insufficient_logging_data',
+    category: 'progress',
+    shortLabel: 'Limited intake data',
+    text: 'There was limited nutrition data logged over recent weeks, so targets will be maintained until more data is available.',
+  },
+  high_adherence_on_track: {
+    id: 'high_adherence_on_track',
+    category: 'progress',
+    shortLabel: 'Target working well',
+    text: 'You consistently hit your nutrition targets and your bodyweight progress is tracking as expected. Keep it up!',
+  },
+  high_adherence_recalibrate: {
+    id: 'high_adherence_recalibrate',
+    category: 'progress',
+    shortLabel: 'Calibrated from strong adherence',
+    text: 'You consistently followed your recommended target, providing clear data to calibrate your updated intake.',
+  },
 
   // ── 3. Macronutrients ──
   protein_appropriate: {

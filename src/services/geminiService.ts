@@ -438,6 +438,8 @@ Output JSON schema strictly matching:
   }
 }
 
+import type { WeeklyAdherenceSummary } from './nutritionHistoryService';
+
 export interface LongitudinalRecommendationInput {
   profile: {
     sex?: string;
@@ -467,6 +469,7 @@ export interface LongitudinalRecommendationInput {
     target_source_at_time?: string;
     user_action?: string;
   }>;
+  adherence_history?: WeeklyAdherenceSummary[];
 }
 
 export interface LongitudinalRecommendationResult {
@@ -651,7 +654,7 @@ export function validateAndEnforceRecommendationInvariants(params: {
 export function fallbackLongitudinalRecommendation(
   input: LongitudinalRecommendationInput
 ): LongitudinalRecommendationResult {
-  const { profile, active_target, recent_updates } = input;
+  const { profile, active_target, recent_updates, adherence_history } = input;
   const userSex = (profile.sex || profile.gender || 'other').toLowerCase();
   const goal = profile.goal || 'maintain_weight';
   const currentWeight = profile.current_weight || 70;
@@ -674,10 +677,29 @@ export function fallbackLongitudinalRecommendation(
   let recommended_fat_g = baseline.fat;
   const baselineTdee = baseline.tdee || (userSex === 'female' ? 1800 : 2200);
 
+  // Check adherence context if available
+  const hasAdherence = adherence_history && adherence_history.length > 0;
+  const isInsufficientOrLowAdherence = hasAdherence && adherence_history.every(
+    (w) => w.classification === 'INSUFFICIENT_DATA' || w.classification === 'LOW_ADHERENCE' || w.classification === 'PARTIAL_ADHERENCE'
+  );
+
   if (!recent_updates || recent_updates.length <= 1) {
     statement_ids.push('insufficient_history', 'calories_on_track', 'protein_appropriate');
+  } else if (isInsufficientOrLowAdherence) {
+    // CRITICAL GUARDRAIL: Do not adjust target solely from weight change if user did not follow the plan!
+    recommended_calories = active_target.calories;
+    recommended_protein_g = active_target.protein_g;
+    recommended_carbs_g = active_target.carbs_g;
+    recommended_fat_g = active_target.fat_g;
+
+    const isAllMissingData = adherence_history.every((w) => w.classification === 'INSUFFICIENT_DATA');
+    if (isAllMissingData) {
+      statement_ids.push('insufficient_logging_data', 'keep_target_collect_data');
+    } else {
+      statement_ids.push('insufficient_adherence', 'keep_target_collect_data');
+    }
   } else {
-    // Check recent weight trend
+    // User followed plan with high adherence (or adherence data not passed)
     const latest = recent_updates[recent_updates.length - 1];
     const prev = recent_updates[recent_updates.length - 2] || latest;
     const delta = latest.weight - (prev.weight || latest.weight);
@@ -691,10 +713,10 @@ export function fallbackLongitudinalRecommendation(
         recommended_calories = Math.max(baseline.calories - 100, userSex === 'female' ? 1200 : 1500);
       } else if (delta < -1.2) {
         statement_ids.push('progress_faster', 'calories_increase', 'fat_loss_sustainable');
-        // Prevent loss-goal calorie increase from flipping into a surplus
         recommended_calories = Math.min(baseline.calories + 100, Math.round(baselineTdee * 0.95));
       } else {
-        statement_ids.push('progress_on_track', 'calories_on_track', 'protein_appropriate');
+        statement_ids.push('high_adherence_on_track', 'progress_on_track', 'calories_on_track');
+        recommended_calories = active_target.calories;
       }
     } else if (goal === 'gain_muscle' || goal === 'gain_weight') {
       if (delta < -0.2) {
@@ -705,10 +727,10 @@ export function fallbackLongitudinalRecommendation(
         recommended_calories = baseline.calories + 100;
       } else if (delta > 0.8) {
         statement_ids.push('progress_faster', 'calories_slight_trim', 'muscle_gain_sustainable');
-        // Prevent muscle-gain trim from ever dropping below TDEE (must remain a lean surplus)
         recommended_calories = Math.max(baseline.calories - 100, Math.round(baselineTdee * 1.03));
       } else {
-        statement_ids.push('progress_on_track', 'calories_on_track', 'protein_appropriate');
+        statement_ids.push('high_adherence_on_track', 'progress_on_track', 'calories_on_track');
+        recommended_calories = active_target.calories;
       }
     } else {
       if (Math.abs(delta) < 0.5) {
@@ -761,7 +783,7 @@ export async function recommendLongitudinalTargets(
   input: LongitudinalRecommendationInput
 ): Promise<LongitudinalRecommendationResult> {
   try {
-    const { profile, active_target, recent_updates } = input;
+    const { profile, active_target, recent_updates, adherence_history } = input;
     const userSex = profile.sex || profile.gender || 'unspecified';
 
     // Format recent updates chronologically (oldest to newest, max 6)
@@ -777,11 +799,23 @@ export async function recommendLongitudinalTargets(
         }).join('\n')
       : 'No prior historical check-ins (initial weight update event).';
 
+    // Format weekly adherence summaries chronologically
+    const adherenceFormatted = (adherence_history && adherence_history.length > 0)
+      ? adherence_history.map((w) => {
+          return `Week ${w.weekIndex} [${w.startDate} to ${w.endDate}]:
+- Target: ${w.targetCalories} kcal (P: ${w.targetProtein}g, C: ${w.targetCarbs}g, F: ${w.targetFat}g)
+- Actual Logged Intake: ${w.daysLogged > 0 ? `${w.actualAvgCalories} kcal/day (P: ${w.actualAvgProtein}g, C: ${w.actualAvgCarbs}g, F: ${w.actualAvgFat}g)` : 'No nutrition logged'}
+- Calorie Adherence: ${w.adherencePercentStr}
+- Logging Coverage: ${w.daysLogged}/${w.daysInWeek} days logged
+- Adherence Classification: ${w.classification}`;
+        }).join('\n\n')
+      : 'No weekly nutrition adherence history available.';
+
     const statementsList = formatStatementsForPrompt();
 
     const prompt = `
 You are FitBee's precision nutrition intelligence engine.
-Analyze the user's profile, active nutrition targets, and recent bodyweight check-in history to recommend updated daily targets.
+Analyze the user's profile, active nutrition targets, recent bodyweight check-in history, and weekly nutrition adherence to recommend updated daily targets.
 
 USER PROFILE:
 - Sex: ${userSex}
@@ -802,14 +836,29 @@ ACTIVE NUTRITION TARGET:
 RECENT CHECK-IN HISTORY (Oldest to Newest, max 6):
 ${updatesFormatted}
 
-PHYSIOLOGICAL RULES & GUIDELINES:
-1. Compare expected bodyweight change vs actual trajectory:
-   - Fat Loss (lose_fat): sustainable loss is ~0.5% to 1.0% bodyweight/week. If plateaued or gaining, consider a modest calorie reduction (100-200 kcal). If losing too fast (>1.0%/week), increase calories slightly to protect lean mass.
-   - Muscle Gain (gain_muscle): sustainable gain is ~0.25% to 0.5% bodyweight/week. If weight dropped or plateaued, consider increasing calories by 100-200 kcal. If gaining too fast (>0.5%/week), trim surplus to prevent excess fat gain.
-   - Maintenance (maintain_weight): maintain steady bodyweight near TDEE.
-2. Respect user autonomy:
-   - If active target was a 'user_override', take into account their preferred macro ratios while keeping energy balanced toward their goal.
-3. Safe Nutritional Floors:
+NUTRITION ADHERENCE HISTORY (All weeks within evaluation period):
+${adherenceFormatted}
+
+PHYSIOLOGICAL & ADHERENCE RULES (CRITICAL):
+1. EVALUATE NUTRITION ADHERENCE BEFORE RECALIBRATING TARGETS:
+   - Do NOT evaluate a calorie target solely from bodyweight change!
+   - First determine whether the user actually followed the recommended target during the evaluation period.
+   - If weekly adherence is 'INSUFFICIENT_DATA', 'LOW_ADHERENCE', or 'PARTIAL_ADHERENCE' (e.g. intake substantially differed from target or few days were logged):
+     DO NOT change the calorie target solely because weight changed! The user did not test the target sufficiently.
+     Select 'insufficient_adherence' or 'insufficient_logging_data' and 'keep_target_collect_data', and KEEP recommended_calories = active target calories (${active_target.calories}).
+   - If weekly adherence is 'HIGH_ADHERENCE' (user actually followed the plan within ~90%-110%):
+     a) Progress on track: If weight change matches expected rate (e.g. steady +0.2-0.3kg/wk for gain, -0.5% to 1.0% for loss), select 'high_adherence_on_track' and 'calories_on_track', and MAINTAIN the current target.
+     b) Progress too fast: If gaining or losing materially faster than intended despite high adherence, recommend a modest adjustment (e.g. reduce calories by 100-200 kcal for gaining too fast, select 'progress_faster' and 'calories_decrease' or 'calories_slight_trim').
+     c) Progress too slow / plateaued: If weight is stuck or moving opposite to goal despite high adherence, evaluate an adjustment (e.g. increase calories by 100-200 kcal to overcome plateau, select 'progress_plateau' or 'progress_slower' and 'calories_increase').
+
+2. MISSING DATA HANDLING:
+   - Days with no logs are NOT zero intake. They represent missing data.
+   - If logging coverage is low (<4 days per week), classify as unreliable evidence and maintain current target.
+
+3. HISTORICAL TARGET CHANGES:
+   - If target calories changed between weeks, evaluate each week against its specific applicable target rather than retroactively applying the current target.
+
+4. SAFE NUTRITIONAL FLOORS:
    - Female minimum: 1,200 kcal; Male minimum: 1,500 kcal.
    - Fat minimum: 30g (hormonal floor) and 20%-35% of calories.
    - Carbs minimum: 50g.
@@ -850,6 +899,38 @@ ${statementsList}
     const rawIds: string[] = Array.isArray(parsed.statement_ids) ? parsed.statement_ids : [];
     const validIds = rawIds.filter((id) => Boolean(PREDEFINED_STATEMENTS[id]));
 
+    // Application-Level Guardrail Enforcement:
+    // If adherence is INSUFFICIENT_DATA or LOW_ADHERENCE / PARTIAL_ADHERENCE across the period,
+    // the target cannot be reliably evaluated and must NOT be recalibrated!
+    const hasAdherence = adherence_history && adherence_history.length > 0;
+    const isAllInsufficientOrLow = hasAdherence && adherence_history.every(
+      (w) => w.classification === 'INSUFFICIENT_DATA' || w.classification === 'LOW_ADHERENCE' || w.classification === 'PARTIAL_ADHERENCE'
+    );
+
+    let finalCalories = rawCalories;
+    let finalProtein = rawProtein;
+    let finalCarbs = rawCarbs;
+    let finalFat = rawFat;
+    let finalStatementIds = [...validIds];
+
+    if (isAllInsufficientOrLow) {
+      finalCalories = active_target.calories;
+      finalProtein = active_target.protein_g;
+      finalCarbs = active_target.carbs_g;
+      finalFat = active_target.fat_g;
+
+      const hasInsufficientStatement = finalStatementIds.some((id) =>
+        ['insufficient_adherence', 'insufficient_logging_data', 'keep_target_collect_data'].includes(id)
+      );
+      if (!hasInsufficientStatement) {
+        const isDataMissing = adherence_history.every((w) => w.classification === 'INSUFFICIENT_DATA');
+        finalStatementIds = [
+          isDataMissing ? 'insufficient_logging_data' : 'insufficient_adherence',
+          'keep_target_collect_data',
+        ];
+      }
+    }
+
     // Baseline calculation to obtain authoritative TDEE
     const baseline = calculateDeterministicTargets({
       gender: (userSex === 'male' || userSex === 'female') ? userSex : 'other',
@@ -875,11 +956,11 @@ ${statementsList}
         activity_level: profile.activity_level || 'moderate',
       },
       tdee: authoritativeTdee,
-      recommended_calories: rawCalories,
-      recommended_protein_g: rawProtein,
-      recommended_carbs_g: rawCarbs,
-      recommended_fat_g: rawFat,
-      statement_ids: validIds,
+      recommended_calories: finalCalories,
+      recommended_protein_g: finalProtein,
+      recommended_carbs_g: finalCarbs,
+      recommended_fat_g: finalFat,
+      statement_ids: finalStatementIds,
     });
   } catch (error: any) {
     console.warn('FitBee: Gemini longitudinal recommendation error, falling back to deterministic calculation:', error?.message || error);

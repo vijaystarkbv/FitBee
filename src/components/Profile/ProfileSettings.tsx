@@ -18,6 +18,7 @@ import {
   LongitudinalRecommendationResult,
 } from '../../services/geminiService';
 import { getStatementsFromIds } from '../../services/nutritionStatementLibrary';
+import { calculateWeeklyAdherenceSummaries } from '../../services/nutritionHistoryService';
 
 interface ProfileSettingsProps {
   profile: Profile;
@@ -323,6 +324,46 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
         await loadUpdates();
         await loadAllHistoryUpdates();
 
+        // Determine evaluation period: from earliest recent update (or 14 days ago) up to today
+        const todayStr = progressUpdate.recorded_at
+          ? progressUpdate.recorded_at.split('T')[0]
+          : clock.now().toISOString().split('T')[0];
+
+        let startPeriodStr = '';
+        if (recentUpdates && recentUpdates.length > 0) {
+          const sorted = [...recentUpdates].sort(
+            (a, b) =>
+              new Date(a.recorded_at || a.date || '').getTime() -
+              new Date(b.recorded_at || b.date || '').getTime()
+          );
+          const earliest = sorted[0];
+          startPeriodStr = earliest.recorded_at
+            ? earliest.recorded_at.split('T')[0]
+            : (earliest.date || todayStr);
+        }
+
+        if (!startPeriodStr || startPeriodStr === todayStr) {
+          const d = new Date(todayStr + 'T00:00:00');
+          d.setDate(d.getDate() - 14);
+          startPeriodStr = d.toISOString().split('T')[0];
+        }
+
+        // Calculate weekly adherence summaries for this period
+        const adherenceHistory = await calculateWeeklyAdherenceSummaries(
+          profile.id,
+          startPeriodStr,
+          todayStr,
+          profile
+        );
+
+        if (import.meta.env.DEV) {
+          console.log('[FitBee] Gemini Nutrition Adherence Context:', {
+            period: `${startPeriodStr} to ${todayStr}`,
+            weeksCount: adherenceHistory.length,
+            adherenceHistory,
+          });
+        }
+
         // Call Gemini for longitudinal recommendation
         const recommendation = await recommendLongitudinalTargets({
           profile: {
@@ -363,6 +404,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
               target_fat_at_time: Number(progressUpdate.active_target_fat ?? progressUpdate.target_fat_at_time ?? currentActiveFat),
             },
           ],
+          adherence_history: adherenceHistory,
         });
 
         setPendingRecommendation(recommendation);

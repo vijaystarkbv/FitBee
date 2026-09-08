@@ -40,9 +40,9 @@ const DEFAULT_SUPABASE_URL = 'https://rbbaqzpfimffcgixyukr.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_L9KrnrVHAkBfHOPospS55A_cQOTr8II';
 
 const VERIFIED_MODELS = [
-  'gemini-3.6-flash',
-  'gemini-3.5-flash',
   'gemini-flash-latest',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
   'gemini-flash-lite-latest',
 ];
 
