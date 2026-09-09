@@ -52,12 +52,10 @@ export const DailyWalkingCard: React.FC<DailyWalkingCardProps> = ({ profile, use
           setDistanceInput(data.distance_km > 0 ? String(data.distance_km) : '');
           setStepsInput(data.steps > 0 ? String(data.steps) : '');
         }
-        setIsEditing(false);
       } else {
         // Reset inputs for days without logs (e.g. midnight reset)
         setStepsInput('');
         setDistanceInput('');
-        setIsEditing(false);
       }
     } catch (err) {
       console.error('Failed to load daily walking activity:', err);
@@ -70,13 +68,11 @@ export const DailyWalkingCard: React.FC<DailyWalkingCardProps> = ({ profile, use
     loadDayLog();
 
     const handleWalkingSync = () => {
-      if (!isEditing) {
-        loadDayLog();
-      }
+      loadDayLog();
     };
     window.addEventListener(REALTIME_EVENTS.WALKING_UPDATED, handleWalkingSync);
     return () => window.removeEventListener(REALTIME_EVENTS.WALKING_UPDATED, handleWalkingSync);
-  }, [loadDayLog, isEditing]);
+  }, [loadDayLog]);
 
   // Real-time deterministic derivations
   const currentNumericSteps = parseFloat(stepsInput) || 0;
@@ -190,7 +186,13 @@ export const DailyWalkingCard: React.FC<DailyWalkingCardProps> = ({ profile, use
             {log && !isEditing && (
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  setInputMode(log.input_mode);
+                  setStepsInput(log.steps > 0 ? String(log.steps) : '');
+                  setDistanceInput(log.distance_km > 0 ? String(log.distance_km) : '');
+                  setErrorMessage(null);
+                  setIsEditing(true);
+                }}
                 style={{
                   background: 'none',
                   border: 'none',

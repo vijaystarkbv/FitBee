@@ -7,6 +7,9 @@ import {
   recordHabitSession,
   calculateHabitStreak,
   formatDuration,
+  flushPendingHabitSessions,
+  stashPendingHabitSession,
+  generateUUID,
 } from '../../services/habitService';
 import { formatDateKey } from '../../services/streakService';
 import { useClock } from '../../hooks/useClock';
@@ -33,13 +36,13 @@ interface ActiveTimerState {
 
 const TIMER_STORAGE_KEY_PREFIX = 'fitbee_active_habit_timer_';
 
-function getStoredTimer(userId: string, todayKey: string): ActiveTimerState | null {
+function getStoredTimer(userId: string, _todayKey?: string): ActiveTimerState | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(`${TIMER_STORAGE_KEY_PREFIX}${userId}`);
     if (raw) {
       const parsed: ActiveTimerState = JSON.parse(raw);
-      if (parsed.dateKey === todayKey && parsed.habitId) {
+      if (parsed.habitId) {
         return parsed;
       }
     }
@@ -132,12 +135,14 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
 
   useEffect(() => {
     loadAllData();
-  }, [loadAllData]);
+    flushPendingHabitSessions(profile.id);
+  }, [loadAllData, profile.id]);
 
   // Listen for cross-device Realtime updates to habits, logs, and timer sessions
   useEffect(() => {
     const handleHabitsSync = () => {
       loadAllData();
+      flushPendingHabitSessions(profile.id);
     };
 
     window.addEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitsSync);
@@ -149,25 +154,20 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
       window.removeEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitsSync);
       window.removeEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleHabitsSync);
     };
-  }, [loadAllData]);
+  }, [loadAllData, profile.id]);
 
   // ─────────────────────────────────────────────────────────────
-  // Midnight Reset Handling (Section 17 Note)
+  // Midnight Reset Handling: Reload fresh data without killing active timer
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (prevDateKeyRef.current !== todayKey) {
       // Date changed (crossed 12:00 AM midnight or time machine shifted)
       prevDateKeyRef.current = todayKey;
-      // Reset any active live timer
-      if (activeTimer) {
-        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-        setActiveTimer(null);
-        setLiveElapsedSeconds(0);
-      }
-      // Reload fresh data for the new day
+      // Reload fresh data for the new day and flush any pending sessions
       loadAllData();
+      flushPendingHabitSessions(profile.id);
     }
-  }, [todayKey, activeTimer, loadAllData]);
+  }, [todayKey, loadAllData, profile.id]);
 
   // ─────────────────────────────────────────────────────────────
   // Live Timer Interval & Background/Visibility Sync
@@ -248,7 +248,7 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     setLiveElapsedSeconds(resumedTimer.accumulatedSeconds);
   };
 
-  const handleStopTimer = async () => {
+  const handleStopTimer = () => {
     if (!activeTimer) return;
 
     let finalSeconds = activeTimer.accumulatedSeconds;
@@ -262,29 +262,88 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     const habit = habits.find((h) => h.id === activeTimer.habitId);
     const targetSeconds = habit?.target_duration_seconds ?? 0;
     const timerToSave = activeTimer;
+    const habitId = habit ? habit.id : timerToSave.habitId;
+    const activeDateKey = timerToSave.dateKey || formatDateKey(now);
 
-    // Reset local timer state & storage
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    setActiveTimer(null);
-    setLiveElapsedSeconds(0);
-
-    // Save session if duration > 0
+    // If duration > 0, optimistically update UI and stash session
     if (finalSeconds > 0) {
-      try {
-        const activeDateKey = formatDateKey(now);
-        await recordHabitSession(
-          profile.id,
-          habit ? habit.id : timerToSave.habitId,
-          activeDateKey,
-          timerToSave.startedAt,
-          endedIso,
-          finalSeconds,
-          targetSeconds
-        );
-        await loadAllData();
-      } catch (err) {
-        console.error('Failed to log habit session:', err);
-      }
+      const currentSessions = todaySessions[habitId] || [];
+      const sessionIndex = currentSessions.length + 1;
+      const optimisticSession: HabitSession = {
+        id: generateUUID(),
+        user_id: profile.id,
+        habit_id: habitId,
+        date: activeDateKey,
+        session_index: sessionIndex,
+        started_at: timerToSave.startedAt,
+        ended_at: endedIso,
+        duration_seconds: finalSeconds,
+        created_at: endedIso,
+      };
+
+      const existingLog = todayLogs[habitId];
+      const newTotalDuration =
+        currentSessions.reduce((acc, s) => acc + s.duration_seconds, 0) + finalSeconds;
+      const isCompleted = targetSeconds > 0 && newTotalDuration >= targetSeconds;
+
+      const optimisticLog: HabitLog = {
+        id: existingLog?.id || generateUUID(),
+        user_id: profile.id,
+        habit_id: habitId,
+        date: activeDateKey,
+        is_completed: isCompleted,
+        target_duration_seconds: targetSeconds,
+        actual_duration_seconds: newTotalDuration,
+        completed_at: isCompleted ? (existingLog?.completed_at || endedIso) : null,
+        created_at: existingLog?.created_at || endedIso,
+        updated_at: endedIso,
+      };
+
+      // 1. Instant 0ms Optimistic UI update
+      setTodaySessions((prev) => ({
+        ...prev,
+        [habitId]: [...(prev[habitId] || []), optimisticSession],
+      }));
+      setTodayLogs((prev) => ({
+        ...prev,
+        [habitId]: optimisticLog,
+      }));
+
+      // 2. Durable stash in localStorage
+      stashPendingHabitSession(profile.id, optimisticSession, optimisticLog);
+
+      // 3. Clear active live timer state
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      setActiveTimer(null);
+      setLiveElapsedSeconds(0);
+
+      // 4. Background remote persistence to Supabase
+      recordHabitSession(
+        profile.id,
+        habitId,
+        activeDateKey,
+        timerToSave.startedAt,
+        endedIso,
+        finalSeconds,
+        targetSeconds
+      )
+        .then(() => {
+          // Refresh streaks in background
+          const currentHabit = habits.find((h) => h.id === habitId);
+          if (currentHabit) {
+            calculateHabitStreak(currentHabit, profile.id, now).then(({ currentStreak }) => {
+              setStreaksMap((prev) => ({ ...prev, [habitId]: currentStreak }));
+            });
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to log habit session to Supabase, safely kept in pending queue:', err);
+        });
+    } else {
+      // 0 seconds elapsed: just reset timer
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      setActiveTimer(null);
+      setLiveElapsedSeconds(0);
     }
   };
 

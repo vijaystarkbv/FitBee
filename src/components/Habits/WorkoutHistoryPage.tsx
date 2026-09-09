@@ -34,6 +34,9 @@ export const WorkoutHistoryPage: React.FC<WorkoutHistoryPageProps> = ({
     status: WorkoutDayStatus;
     isPlanned: boolean;
     log: any | null;
+    isPartiallyCompleted?: boolean;
+    completedCount?: number;
+    totalCount?: number;
   } | null>(null);
 
   const loadMonthlyData = useCallback(async () => {
@@ -53,7 +56,7 @@ export const WorkoutHistoryPage: React.FC<WorkoutHistoryPageProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [profile.id, viewDate.getFullYear(), viewDate.getMonth()]);
+  }, [profile.id, viewDate.getFullYear(), viewDate.getMonth(), now]);
 
   useEffect(() => {
     loadMonthlyData();
@@ -71,9 +74,20 @@ export const WorkoutHistoryPage: React.FC<WorkoutHistoryPageProps> = ({
     date: Date,
     status: WorkoutDayStatus,
     isPlanned: boolean,
-    log: any | null
+    log: any | null,
+    isPartiallyCompleted?: boolean,
+    completedCount?: number,
+    totalCount?: number
   ) => {
-    setSelectedDayModal({ date, status, isPlanned, log });
+    setSelectedDayModal({
+      date,
+      status,
+      isPlanned,
+      log,
+      isPartiallyCompleted,
+      completedCount,
+      totalCount,
+    });
   };
 
   return (
@@ -311,6 +325,9 @@ export const WorkoutHistoryPage: React.FC<WorkoutHistoryPageProps> = ({
           status={selectedDayModal.status}
           isPlanned={selectedDayModal.isPlanned}
           log={selectedDayModal.log}
+          isPartiallyCompleted={selectedDayModal.isPartiallyCompleted}
+          completedCount={selectedDayModal.completedCount}
+          totalCount={selectedDayModal.totalCount}
         />
       )}
     </div>

@@ -336,6 +336,100 @@ export async function toggleChecklistHabit(
   return updatedLog;
 }
 
+const PENDING_SESSIONS_PREFIX = 'fitbee_pending_habit_sessions_';
+
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    try {
+      return crypto.randomUUID();
+    } catch (_) {}
+  }
+  // RFC4122 v4 UUID fallback (ensures valid Postgres UUID)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export interface PendingHabitSessionItem {
+  session: HabitSession;
+  log: HabitLog;
+}
+
+export function getPendingHabitSessions(userId: string): PendingHabitSessionItem[] {
+  if (typeof window === 'undefined' || !userId) return [];
+  try {
+    const raw = localStorage.getItem(`${PENDING_SESSIONS_PREFIX}${userId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+export function stashPendingHabitSession(userId: string, session: HabitSession, log: HabitLog): void {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    const pending = getPendingHabitSessions(userId);
+    if (!pending.some((p) => p.session.id === session.id)) {
+      pending.push({ session, log });
+      localStorage.setItem(`${PENDING_SESSIONS_PREFIX}${userId}`, JSON.stringify(pending));
+    }
+  } catch (_) {}
+}
+
+export function removePendingHabitSession(userId: string, sessionId: string): void {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    const pending = getPendingHabitSessions(userId).filter((p) => p.session.id !== sessionId);
+    localStorage.setItem(`${PENDING_SESSIONS_PREFIX}${userId}`, JSON.stringify(pending));
+  } catch (_) {}
+}
+
+export async function flushPendingHabitSessions(userId: string): Promise<void> {
+  if (typeof window === 'undefined' || !userId) return;
+  const pending = getPendingHabitSessions(userId);
+  if (pending.length === 0) return;
+
+  for (const item of pending) {
+    try {
+      const [sessRes, logRes] = await Promise.all([
+        supabase.from('habit_sessions').upsert({
+          id: item.session.id,
+          user_id: item.session.user_id,
+          habit_id: item.session.habit_id,
+          date: item.session.date,
+          session_index: item.session.session_index,
+          started_at: item.session.started_at,
+          ended_at: item.session.ended_at,
+          duration_seconds: item.session.duration_seconds,
+          created_at: item.session.created_at,
+        }),
+        supabase.from('habit_logs').upsert(
+          {
+            id: item.log.id,
+            user_id: item.log.user_id,
+            habit_id: item.log.habit_id,
+            date: item.log.date,
+            is_completed: item.log.is_completed,
+            target_duration_seconds: item.log.target_duration_seconds,
+            actual_duration_seconds: item.log.actual_duration_seconds,
+            completed_at: item.log.completed_at,
+            updated_at: item.log.updated_at,
+          },
+          { onConflict: 'habit_id,date' }
+        ),
+      ]);
+
+      if (!sessRes.error && !logRes.error) {
+        removePendingHabitSession(userId, item.session.id);
+      }
+    } catch (e) {
+      console.warn('Flush attempt failed for session:', item.session.id, e);
+    }
+  }
+}
+
 export async function recordHabitSession(
   userId: string,
   habitId: string,
@@ -352,7 +446,7 @@ export async function recordHabitSession(
   const sessionIndex = existingSessions.length + 1;
 
   const newSession: HabitSession = {
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `session_${Date.now()}`,
+    id: generateUUID(),
     user_id: userId,
     habit_id: habitId,
     date: dateStr,
@@ -374,7 +468,7 @@ export async function recordHabitSession(
 
   const existingLogIdx = local.logs.findIndex((l) => l.habit_id === habitId && l.date === dateStr);
   const updatedLog: HabitLog = {
-    id: existingLogIdx !== -1 ? local.logs[existingLogIdx].id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `log_${Date.now()}`),
+    id: existingLogIdx !== -1 ? local.logs[existingLogIdx].id : generateUUID(),
     user_id: userId,
     habit_id: habitId,
     date: dateStr,
@@ -394,8 +488,11 @@ export async function recordHabitSession(
 
   saveLocalStore(userId, local);
 
+  // Stash in durable pending queue before remote write
+  stashPendingHabitSession(userId, newSession, updatedLog);
+
   try {
-    await Promise.all([
+    const [sessRes, logRes] = await Promise.all([
       supabase.from('habit_sessions').insert({
         id: newSession.id,
         user_id: userId,
@@ -422,8 +519,21 @@ export async function recordHabitSession(
         { onConflict: 'habit_id,date' }
       ),
     ]);
+
+    if (sessRes.error) {
+      console.error('Supabase habit_sessions insert error:', sessRes.error);
+      throw sessRes.error;
+    }
+    if (logRes.error) {
+      console.error('Supabase habit_logs upsert error:', logRes.error);
+      throw logRes.error;
+    }
+
+    // Remote persistence confirmed -> remove from pending stash
+    removePendingHabitSession(userId, newSession.id);
   } catch (err) {
-    console.warn('Could not record habit session to Supabase, local saved:', err);
+    console.warn('Could not record habit session to Supabase, kept in durable pending stash:', err);
+    // Do not swallow if caller wants to know, but session remains safely stored locally
   }
 
   return { session: newSession, log: updatedLog };

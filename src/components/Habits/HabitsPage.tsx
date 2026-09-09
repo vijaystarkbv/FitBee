@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Profile, NutritionLog } from '../../types/database.types';
+import { Profile, NutritionLog, DailyWalkingLog } from '../../types/database.types';
 import { getStreakSummary, StreakSummary, formatDateKey } from '../../services/streakService';
 import {
   getUserNutritionTargets,
   calculateNutritionTargetsScore,
 } from '../../services/nutritionHistoryService';
+import { getDailyWalkingLog } from '../../services/walkingService';
 import { NutritionAnalysisSection } from './NutritionAnalysisSection';
 import { NutritionHistoryPage } from './NutritionHistoryPage';
 import { WorkoutHistoryPage } from './WorkoutHistoryPage';
@@ -33,6 +34,7 @@ export const HabitsPage: React.FC<HabitsPageProps> = ({ profile, todayNutrition,
   const [hitlistHabits, setHitlistHabits] = useState<Habit[]>([]);
   const [hitlistLogs, setHitlistLogs] = useState<Record<string, HabitLog>>({});
   const [hitlistSessions, setHitlistSessions] = useState<Record<string, HabitSession[]>>({});
+  const [todayWalking, setTodayWalking] = useState<DailyWalkingLog | null>(null);
 
   // Main navigation state: 'habit' | 'analysis'
   const [activeTab, setActiveTab] = useState<'habit' | 'analysis'>('habit');
@@ -57,6 +59,14 @@ export const HabitsPage: React.FC<HabitsPageProps> = ({ profile, todayNutrition,
     }
   }, [profile.id, todayKey]);
 
+  const loadWalking = useCallback(async () => {
+    if (!profile?.id) return;
+    try {
+      const wLog = await getDailyWalkingLog(profile.id, todayKey);
+      setTodayWalking(wLog);
+    } catch (_) {}
+  }, [profile?.id, todayKey]);
+
   const fetchStreak = useCallback(async () => {
     try {
       const data = await getStreakSummary(profile);
@@ -71,24 +81,28 @@ export const HabitsPage: React.FC<HabitsPageProps> = ({ profile, todayNutrition,
   useEffect(() => {
     fetchStreak();
     loadHitlistPreview();
+    loadWalking();
 
     const handleSync = () => {
       fetchStreak();
       loadHitlistPreview();
+      loadWalking();
     };
 
     window.addEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleSync);
     window.addEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleSync);
     window.addEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleSync);
     window.addEventListener(REALTIME_EVENTS.WORKOUT_UPDATED, handleSync);
+    window.addEventListener(REALTIME_EVENTS.WALKING_UPDATED, handleSync);
 
     return () => {
       window.removeEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleSync);
       window.removeEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleSync);
       window.removeEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleSync);
       window.removeEventListener(REALTIME_EVENTS.WORKOUT_UPDATED, handleSync);
+      window.removeEventListener(REALTIME_EVENTS.WALKING_UPDATED, handleSync);
     };
-  }, [fetchStreak, loadHitlistPreview]);
+  }, [fetchStreak, loadHitlistPreview, loadWalking]);
 
   const formattedToday = now.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -102,6 +116,7 @@ export const HabitsPage: React.FC<HabitsPageProps> = ({ profile, todayNutrition,
   const currentProtein = todayNutrition?.total_protein || 0;
   const currentCarbs = todayNutrition?.total_carbs || 0;
   const currentFat = todayNutrition?.total_fat || 0;
+  const walkingBurn = todayWalking?.calories_burned || 0;
 
   // Strict targets from user profile
   const targets = getUserNutritionTargets(profile);
@@ -110,7 +125,7 @@ export const HabitsPage: React.FC<HabitsPageProps> = ({ profile, todayNutrition,
   const goalCarbs = targets.carbs;
   const goalFat = targets.fat;
 
-  // Overall 4-metric target completion score using target proximity
+  // Overall 4-metric target completion score using net calories (food - walking burn)
   const nutritionScoreResult = calculateNutritionTargetsScore(
     {
       calories: currentCalories,
@@ -118,7 +133,8 @@ export const HabitsPage: React.FC<HabitsPageProps> = ({ profile, todayNutrition,
       carbs: currentCarbs,
       fat: currentFat,
     },
-    targets
+    targets,
+    walkingBurn
   );
   const nutritionTargetPercentage = nutritionScoreResult.overallScore;
   const isNutritionComplete = nutritionScoreResult.isCompleted;
@@ -461,6 +477,7 @@ export const HabitsPage: React.FC<HabitsPageProps> = ({ profile, todayNutrition,
                   </p>
                   <p style={{ fontSize: 12, color: '#6B7280', margin: '2px 0 0' }}>
                     Finished {nutritionTargetPercentage}% of today's target
+                    {walkingBurn > 0 ? ` (Net ${nutritionScoreResult.netCalories} kcal)` : ''}
                   </p>
                 </div>
               </div>

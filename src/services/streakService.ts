@@ -9,6 +9,10 @@ import {
   getUserTemplateVersions,
   getActiveTemplateVersionForDateSync,
 } from './workoutTemplateVersionService';
+import {
+  calculateWorkoutDayCompletion,
+  fetchWorkoutLogsForRange,
+} from './workoutHistoryService';
 
 export type StreakDayStatus = 'FULL' | 'PARTIAL' | 'MISSED' | 'FROZEN';
 
@@ -204,26 +208,30 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     nutritionMap[log.date] = log;
   });
 
-  // 3. Fetch past 60 days of workout logs & sets (with 1-day timezone buffer)
-  const queryStartDate = new Date(startDate);
-  queryStartDate.setDate(queryStartDate.getDate() - 1);
-  const queryStartStr = formatDateKey(queryStartDate);
-
-  const { data: workoutLogs } = await supabase
-    .from('workout_logs')
-    .select('*, workout_log_sets(*)')
+  // Fetch walking logs for net calories
+  const { data: walkingLogs } = await supabase
+    .from('daily_walking_logs')
+    .select('date, calories_burned')
     .eq('user_id', userId)
-    .gte('start_time', `${queryStartStr}T00:00:00.000Z`)
-    .order('start_time', { ascending: true });
+    .gte('date', startDateStr)
+    .lte('date', todayStr);
 
-  const workoutMap: Record<string, boolean> = {};
+  const walkingMap: Record<string, number> = {};
+  (walkingLogs || []).forEach((w: any) => {
+    walkingMap[w.date] = Number(w.calories_burned) || 0;
+  });
+
+  // 3. Fetch past 60 days of workout logs & sets
+  const workoutLogs = await fetchWorkoutLogsForRange(userId, startDateStr, todayStr);
+
+  const workoutLogsByDate: Record<string, any[]> = {};
   (workoutLogs || []).forEach((log: any) => {
     if (log.start_time) {
       const logDate = formatDateKey(new Date(log.start_time));
-      const hasSets = log.workout_log_sets && log.workout_log_sets.length > 0;
-      if (hasSets) {
-        workoutMap[logDate] = true;
+      if (!workoutLogsByDate[logDate]) {
+        workoutLogsByDate[logDate] = [];
       }
+      workoutLogsByDate[logDate].push(log);
     }
   });
 
@@ -260,7 +268,20 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     const isScheduledWorkoutDay = hasActiveTemplate && scheduledDays.includes(weekdayName);
     const restDay = hasActiveTemplate && !isScheduledWorkoutDay;
 
-    const hasLoggedWorkout = Boolean(workoutMap[dateStr]);
+    const dayWorkoutLogs = workoutLogsByDate[dateStr] || [];
+    const workoutCompletion = calculateWorkoutDayCompletion(
+      d,
+      activeVersion,
+      dayWorkoutLogs,
+      !isFuture
+    );
+
+    // Support test override if present
+    const testOverride =
+      typeof window !== 'undefined' ? localStorage.getItem(`fitbee_test_workout_${dateStr}`) : null;
+    const hasSatisfiedWorkout =
+      testOverride !== null ? testOverride === 'true' : workoutCompletion.isCompleted;
+    const hasAnyWorkout = workoutCompletion.hasAnyWorkout;
 
     // Nutrition requirement: overall Nutrition Targets score >= 85%
     const nutLog = nutritionMap[dateStr];
@@ -268,6 +289,7 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     let nutritionComplete = false;
 
     if (nutLog) {
+      const walkingBurn = walkingMap[dateStr] || 0;
       const scoreResult = calculateNutritionTargetsScore(
         {
           calories: Number(nutLog.total_calories) || 0,
@@ -275,7 +297,8 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
           carbs: Number(nutLog.total_carbs) || 0,
           fat: Number(nutLog.total_fat) || 0,
         },
-        targets
+        targets,
+        walkingBurn
       );
       nutritionScore = scoreResult.overallScore;
       nutritionComplete = scoreResult.isCompleted;
@@ -293,9 +316,9 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
     } else if (hasActiveTemplate) {
       if (isScheduledWorkoutDay) {
         // Scheduled workout day: both needed for FULL, either for PARTIAL
-        if (hasLoggedWorkout && nutritionComplete) {
+        if (hasSatisfiedWorkout && nutritionComplete) {
           status = 'FULL';
-        } else if (hasLoggedWorkout || nutritionComplete) {
+        } else if (hasSatisfiedWorkout || nutritionComplete) {
           status = 'PARTIAL';
         } else {
           status = 'MISSED';
@@ -306,7 +329,7 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
         // Neither completed is MISSED (no free streak for doing nothing).
         if (nutritionComplete) {
           status = 'FULL';
-        } else if (hasLoggedWorkout) {
+        } else if (hasAnyWorkout) {
           status = 'PARTIAL';
         } else {
           status = 'MISSED';
@@ -314,14 +337,18 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
       }
     } else {
       // Prior to template creation: real logged activity counts, no free passes
-      if (nutritionComplete) {
+      if (nutritionComplete && hasAnyWorkout) {
         status = 'FULL';
-      } else if (hasLoggedWorkout) {
+      } else if (nutritionComplete || hasAnyWorkout) {
         status = 'PARTIAL';
       } else {
         status = 'MISSED';
       }
     }
+
+    const isWorkoutCompletedForDay = isScheduledWorkoutDay
+      ? hasSatisfiedWorkout
+      : hasAnyWorkout || restDay;
 
     dailyRawList.push({
       date: d,
@@ -330,7 +357,7 @@ export async function getStreakSummary(profile: Profile): Promise<StreakSummary>
       isToday,
       isFuture,
       restDay,
-      workoutComplete: hasLoggedWorkout || restDay,
+      workoutComplete: isWorkoutCompletedForDay,
       nutritionComplete,
       nutritionScore,
       isFrozen,

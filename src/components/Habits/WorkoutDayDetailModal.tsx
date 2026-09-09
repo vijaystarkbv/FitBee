@@ -9,6 +9,9 @@ interface WorkoutDayDetailModalProps {
   isPlanned: boolean;
   plannedDayName?: string;
   log: any | null;
+  isPartiallyCompleted?: boolean;
+  completedCount?: number;
+  totalCount?: number;
 }
 
 export const WorkoutDayDetailModal: React.FC<WorkoutDayDetailModalProps> = ({
@@ -19,6 +22,9 @@ export const WorkoutDayDetailModal: React.FC<WorkoutDayDetailModalProps> = ({
   isPlanned,
   plannedDayName,
   log,
+  isPartiallyCompleted,
+  completedCount,
+  totalCount,
 }) => {
   if (!isOpen) return null;
 
@@ -63,6 +69,14 @@ export const WorkoutDayDetailModal: React.FC<WorkoutDayDetailModalProps> = ({
   const getBadge = () => {
     switch (status) {
       case 'COMPLETED':
+        if (isPartiallyCompleted && completedCount && totalCount) {
+          return {
+            label: `Completed (${completedCount}/${totalCount} - Partially Done)`,
+            color: '#2D6A4F',
+            bg: '#EAF5EE',
+            border: '#B7E4C7',
+          };
+        }
         return { label: 'Completed Workout', color: '#2D6A4F', bg: '#EAF5EE', border: '#B7E4C7' };
       case 'EXTRA':
         return { label: 'Extra Workout', color: '#2A5A9E', bg: '#EBF2FC', border: '#BFDBFE' };

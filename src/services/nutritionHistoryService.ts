@@ -183,23 +183,32 @@ export interface NutritionTargetsScoreResult {
   fatScore: number;
   overallScore: number;
   isCompleted: boolean;
+  netCalories: number;
+  foodCalories: number;
+  walkingBurnCalories: number;
 }
 
 /**
  * Calculates overall daily Nutrition Targets completion score across all 4 metrics:
- * Calories, Protein, Carbs, and Fat.
+ * Calories (evaluated as net energy: food intake minus walking calories burned),
+ * Protein, Carbs, and Fat.
  * Returns individual proximity scores and their balanced average.
  */
 export function calculateNutritionTargetsScore(
   actual: { calories: number; protein: number; carbs: number; fat: number },
-  targets: UserNutritionTargets
+  targets: UserNutritionTargets,
+  walkingBurnCalories: number = 0
 ): NutritionTargetsScoreResult {
   const targetCal = targets.calories > 0 ? targets.calories : 2000;
   const targetP = targets.protein > 0 ? targets.protein : 120;
   const targetC = targets.carbs > 0 ? targets.carbs : 250;
   const targetF = targets.fat > 0 ? targets.fat : 55;
 
-  const caloriesScore = calculateMetricProximityScore(actual.calories || 0, targetCal);
+  const foodCal = actual.calories || 0;
+  const burn = Math.max(0, walkingBurnCalories || 0);
+  const netCalories = Math.max(0, foodCal - burn);
+
+  const caloriesScore = calculateMetricProximityScore(netCalories, targetCal);
   const proteinScore = calculateMetricProximityScore(actual.protein || 0, targetP);
   const carbsScore = calculateMetricProximityScore(actual.carbs || 0, targetC);
   const fatScore = calculateMetricProximityScore(actual.fat || 0, targetF);
@@ -214,6 +223,9 @@ export function calculateNutritionTargetsScore(
     fatScore,
     overallScore,
     isCompleted,
+    netCalories,
+    foodCalories: foodCal,
+    walkingBurnCalories: burn,
   };
 }
 

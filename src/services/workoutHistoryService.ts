@@ -88,11 +88,261 @@ export interface MonthlyWorkoutSummary {
   completionRate: number;
   exercisesPerformed: number;
   setsCompleted: number;
-  dailyMap: Record<string, { status: WorkoutDayStatus; log: any | null; isPlanned: boolean }>;
+  dailyMap: Record<
+    string,
+    {
+      status: WorkoutDayStatus;
+      log: any | null;
+      isPlanned: boolean;
+      isPartiallyCompleted?: boolean;
+      completedCount?: number;
+      totalCount?: number;
+    }
+  >;
 }
 
-const SHORT_WEEKDAY_LABELS = ['SU', 'M', 'T', 'W', 'TH', 'F', 'S'];
-const FULL_WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+export const SHORT_WEEKDAY_LABELS = ['SU', 'M', 'T', 'W', 'TH', 'F', 'S'];
+export const FULL_WEEKDAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
+
+export interface WorkoutDayCompletionResult {
+  isScheduled: boolean;
+  totalScheduledExercises: number;
+  requiredExercises: number;
+  completedScheduledExercises: number;
+  completionPercentage: number;
+  isCompleted: boolean;
+  isFullyCompleted: boolean;
+  isPartiallyCompleted: boolean;
+  hasAnyWorkout: boolean;
+  isExtraOnly: boolean;
+  status: WorkoutDayStatus;
+  scheduledDayName: string | null;
+  scheduledExerciseNames: string[];
+  completedExerciseNames: string[];
+  extraExerciseNames: string[];
+}
+
+/**
+ * Authoritative Canonical Workout Completion Calculator.
+ * Evaluates whether logged workout activity sufficiently fulfills the scheduled workout template for a date.
+ * Rule:
+ * - 85% threshold with standard rounding (0.1-0.4 down, 0.5-0.9 up):
+ *   requiredExercises = Math.max(1, Math.round(totalScheduledExercises * 0.85))
+ *   (e.g., 8 exercises -> 7; 3 exercises -> 3; 4 exercises -> 3).
+ * - Matches exercises using stable master exercise IDs (with name fallback).
+ * - Extra unrelated exercises do not satisfy the template, nor do they hurt completion.
+ */
+export function calculateWorkoutDayCompletion(
+  targetDate: Date,
+  activeVersion: any | null,
+  dayLogs: any[],
+  isPastOrToday: boolean,
+  fallbackTemplateDays?: any[]
+): WorkoutDayCompletionResult {
+  const dayOfWeek = targetDate.getDay();
+  const weekdayName = FULL_WEEKDAY_NAMES[dayOfWeek].toLowerCase();
+
+  const hasActiveTemplate = activeVersion !== null;
+  if (!hasActiveTemplate) {
+    const hasSets = (dayLogs || []).some(
+      (l) => l.workout_log_sets && l.workout_log_sets.length > 0
+    );
+    return {
+      isScheduled: false,
+      totalScheduledExercises: 0,
+      requiredExercises: 0,
+      completedScheduledExercises: 0,
+      completionPercentage: 0,
+      isCompleted: false,
+      isFullyCompleted: false,
+      isPartiallyCompleted: false,
+      hasAnyWorkout: hasSets,
+      isExtraOnly: hasSets,
+      status: hasSets ? 'EXTRA' : 'NONE',
+      scheduledDayName: null,
+      scheduledExerciseNames: [],
+      completedExerciseNames: [],
+      extraExerciseNames: [],
+    };
+  }
+
+  const scheduledDays = (activeVersion.scheduled_days || []).map((d: string) => d.trim().toLowerCase());
+  const isScheduled = scheduledDays.includes(weekdayName);
+
+  if (!isScheduled) {
+    const hasSets = (dayLogs || []).some(
+      (l) => l.workout_log_sets && l.workout_log_sets.length > 0
+    );
+    return {
+      isScheduled: false,
+      totalScheduledExercises: 0,
+      requiredExercises: 0,
+      completedScheduledExercises: 0,
+      completionPercentage: 0,
+      isCompleted: false,
+      isFullyCompleted: false,
+      isPartiallyCompleted: false,
+      hasAnyWorkout: hasSets,
+      isExtraOnly: hasSets,
+      status: hasSets ? 'EXTRA' : 'REST',
+      scheduledDayName: null,
+      scheduledExerciseNames: [],
+      completedExerciseNames: [],
+      extraExerciseNames: [],
+    };
+  }
+
+  // Scheduled day: Resolve required exercises from days_config
+  const dayConfig = (activeVersion.days_config || []).find(
+    (d: any) => d.day_name && d.day_name.trim().toLowerCase() === weekdayName && d.is_enabled !== false
+  );
+
+  let scheduledExercises = dayConfig?.exercises || [];
+  if (scheduledExercises.length === 0 && fallbackTemplateDays && fallbackTemplateDays.length > 0) {
+    const fbDay = fallbackTemplateDays.find(
+      (d: any) => (d.day_name || d.name || '').trim().toLowerCase() === weekdayName
+    );
+    if (fbDay && fbDay.workout_template_exercises) {
+      scheduledExercises = fbDay.workout_template_exercises;
+    }
+  }
+
+  const scheduledExIdSet = new Set<string>();
+  const scheduledExNameMap = new Map<string, string>(); // lowercaseName -> displayName
+  const scheduledNamesList: string[] = [];
+
+  scheduledExercises.forEach((e: any) => {
+    if (e.exercise_id) scheduledExIdSet.add(e.exercise_id);
+    const dName =
+      e.master_exercises?.exercise_name ||
+      e.exercise?.exercise_name ||
+      e.exercise_name ||
+      e.name ||
+      '';
+    if (dName) {
+      const lower = dName.trim().toLowerCase();
+      scheduledExNameMap.set(lower, dName);
+      if (!scheduledNamesList.includes(dName)) scheduledNamesList.push(dName);
+    }
+  });
+
+  const totalScheduledExercises = Math.max(
+    scheduledExIdSet.size,
+    scheduledNamesList.length
+  );
+
+  // Rounding threshold:
+  // Math.round(totalScheduledExercises * 0.85):
+  // 0.1-0.4 rounds down, 0.5-0.9 rounds up
+  // E.g., 8 * 0.85 = 6.8 -> 7; 3 * 0.85 = 2.55 -> 3; 4 * 0.85 = 3.4 -> 3
+  const requiredExercises =
+    totalScheduledExercises > 0 ? Math.max(1, Math.round(totalScheduledExercises * 0.85)) : 0;
+
+  // Extract completed sets and exercises from dayLogs
+  const loggedExIds = new Set<string>();
+  const loggedExNames = new Map<string, string>(); // lower -> display
+
+  (dayLogs || []).forEach((l) => {
+    (l.workout_log_sets || []).forEach((s: any) => {
+      const hasReps = s.reps_completed !== null && Number(s.reps_completed) > 0;
+      const hasTime = s.duration_seconds !== null && Number(s.duration_seconds) > 0;
+      const hasWeight = Number(s.weight_kg) > 0;
+      const isValidSet = hasReps || hasTime || hasWeight || Boolean(s.id);
+
+      if (isValidSet) {
+        if (s.exercise_id) loggedExIds.add(s.exercise_id);
+        const name = (s.exercise_name || '').trim();
+        if (name) loggedExNames.set(name.toLowerCase(), name);
+      }
+    });
+  });
+
+  // Match logged exercises against scheduled template exercises
+  const completedNames: string[] = [];
+  const extraNames: string[] = [];
+
+  if (scheduledExIdSet.size > 0) {
+    scheduledExercises.forEach((e: any) => {
+      const exId = e.exercise_id;
+      const dName =
+        e.master_exercises?.exercise_name ||
+        e.exercise?.exercise_name ||
+        e.exercise_name ||
+        e.name ||
+        exId;
+      if (exId && loggedExIds.has(exId)) {
+        if (!completedNames.includes(dName)) completedNames.push(dName);
+      } else if (dName && loggedExNames.has(dName.trim().toLowerCase())) {
+        if (!completedNames.includes(dName)) completedNames.push(dName);
+      }
+    });
+  } else {
+    scheduledNamesList.forEach((name) => {
+      if (loggedExNames.has(name.toLowerCase())) {
+        if (!completedNames.includes(name)) completedNames.push(name);
+      }
+    });
+  }
+
+  // Find extra exercises performed that are not in the template
+  loggedExNames.forEach((dName, lower) => {
+    if (!scheduledExNameMap.has(lower) && !completedNames.includes(dName)) {
+      extraNames.push(dName);
+    }
+  });
+
+  const completedScheduledExercises = completedNames.length;
+  const completionPercentage =
+    totalScheduledExercises > 0
+      ? Math.min(100, Math.round((completedScheduledExercises / totalScheduledExercises) * 100))
+      : 0;
+
+  const isCompleted =
+    totalScheduledExercises > 0 && completedScheduledExercises >= requiredExercises;
+  const isFullyCompleted =
+    totalScheduledExercises > 0 && completedScheduledExercises >= totalScheduledExercises;
+  const isPartiallyCompleted = isCompleted && !isFullyCompleted;
+
+  const hasAnyWorkout = loggedExIds.size > 0 || loggedExNames.size > 0;
+  const isExtraOnly = hasAnyWorkout && completedScheduledExercises === 0;
+
+  let status: WorkoutDayStatus = 'REST';
+  if (isCompleted) {
+    status = 'COMPLETED';
+  } else if (isExtraOnly) {
+    status = 'EXTRA';
+  } else if (isPastOrToday) {
+    status = 'MISSED';
+  } else {
+    status = 'REST';
+  }
+
+  return {
+    isScheduled: true,
+    totalScheduledExercises,
+    requiredExercises,
+    completedScheduledExercises,
+    completionPercentage,
+    isCompleted,
+    isFullyCompleted,
+    isPartiallyCompleted,
+    hasAnyWorkout,
+    isExtraOnly,
+    status,
+    scheduledDayName: dayConfig?.day_name || weekdayName,
+    scheduledExerciseNames: scheduledNamesList,
+    completedExerciseNames: completedNames,
+    extraExerciseNames: extraNames,
+  };
+}
 
 /**
  * Format a Date object to 'YYYY-MM-DD'
@@ -571,7 +821,10 @@ export function calculateWeeklyWorkoutAnalysis(
   previousWeekLogs: any[],
   plannedWeekdays: string[],
   clockNow: Date,
-  masterMap: Record<string, MasterExercise> = {}
+  masterMap: Record<string, MasterExercise> = {},
+  templateVersions: any[] = [],
+  userId?: string,
+  fallbackTemplateDays?: any[]
 ): WorkoutWeekAnalysis {
   const monday = currentWeekDays[0];
   const sunday = currentWeekDays[6];
@@ -608,41 +861,65 @@ export function calculateWeeklyWorkoutAnalysis(
     const dayOfWeek = d.getDay();
     const fullDayName = FULL_WEEKDAY_NAMES[dayOfWeek];
     const dayLabel = SHORT_WEEKDAY_LABELS[dayOfWeek];
-
-    const isPlanned = plannedWeekdays.includes(fullDayName);
-    if (isPlanned) plannedCount++;
-
     const logsForDay = currLogsByDate[dateStr] || [];
     const hasWorkout = logsForDay.length > 0;
     const isPastOrToday = dateStr <= clockDateStr;
 
-    let isCompleted = false;
-    let isExtra = false;
-    let status: WorkoutDayStatus = 'REST';
+    const activeVersion = userId
+      ? getActiveTemplateVersionForDateSync(userId, d, templateVersions)
+      : templateVersions.length > 0
+      ? templateVersions.find((v: any) => {
+          const from = new Date(v.effective_from).getTime();
+          const to = v.effective_to ? new Date(v.effective_to).getTime() : Infinity;
+          const t = d.getTime();
+          return t >= from && t < to;
+        }) || templateVersions[templateVersions.length - 1]
+      : plannedWeekdays.length > 0
+      ? ({
+          id: 'fallback',
+          user_id: userId || '',
+          template_id: 'fallback',
+          effective_from: new Date(0).toISOString(),
+          effective_to: null,
+          scheduled_days: plannedWeekdays,
+          days_config: (fallbackTemplateDays || []).map((fd: any) => ({
+            id: fd.id,
+            day_name: fd.day_name || fd.name || '',
+            is_enabled: fd.is_enabled !== false,
+            order_index: fd.order_index ?? 0,
+            exercises: (fd.workout_template_exercises || []).map((fe: any) => ({
+              id: fe.id,
+              exercise_id: fe.exercise_id,
+              order_index: fe.order_index ?? 0,
+              target_sets: fe.target_sets ?? 3,
+              target_reps: fe.target_reps ?? 10,
+            })),
+          })),
+        } as any)
+      : null;
+
+    const compResult = calculateWorkoutDayCompletion(
+      d,
+      activeVersion,
+      logsForDay,
+      isPastOrToday,
+      fallbackTemplateDays
+    );
+
+    const isPlanned = compResult.isScheduled;
+    if (isPlanned) plannedCount++;
+
+    const isCompleted = compResult.isCompleted;
+    if (isCompleted) completedPlannedCount++;
+
+    const isExtra = compResult.status === 'EXTRA';
+    if (isExtra) extraWorkoutsCount++;
 
     if (hasWorkout) {
       totalWorkouts += logsForDay.length;
-      // Check if any log is an extra workout
-      const isMarkedExtra = logsForDay.some(
-        (l) => l.day_name === 'Extra Workout' || (!l.template_day_id && !isPlanned)
-      );
-
-      if (isMarkedExtra || !isPlanned) {
-        isExtra = true;
-        status = 'EXTRA';
-        extraWorkoutsCount++;
-      } else {
-        isCompleted = true;
-        status = 'COMPLETED';
-        completedPlannedCount++;
-      }
-    } else {
-      if (isPlanned && isPastOrToday) {
-        status = 'MISSED';
-      } else {
-        status = 'REST';
-      }
     }
+
+    const status = compResult.status;
 
     return {
       date: d,
@@ -859,10 +1136,19 @@ export async function fetchMonthlyWorkoutHistory(
 
   const monthLabel = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  const [logs, versions] = await Promise.all([
+  const [logs, versions, tmplRes] = await Promise.all([
     fetchWorkoutLogsForRange(userId, startStr, endStr),
     getUserTemplateVersions(userId),
+    supabase
+      .from('workout_templates')
+      .select('id, workout_template_days(id, day_name, is_enabled, workout_template_exercises(*, master_exercises(*)))')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1),
   ]);
+
+  const fallbackTemplateDays = tmplRes?.data?.[0]?.workout_template_days || [];
 
   const logsByDate: Record<string, any[]> = {};
   let totalSetsCount = 0;
@@ -883,51 +1169,45 @@ export async function fetchMonthlyWorkoutHistory(
   const daysInMonth = lastDay.getDate();
   let workoutsCompleted = 0;
   let plannedWorkouts = 0;
-  const dailyMap: Record<string, { status: WorkoutDayStatus; log: any | null; isPlanned: boolean }> = {};
+  const dailyMap: Record<
+    string,
+    {
+      status: WorkoutDayStatus;
+      log: any | null;
+      isPlanned: boolean;
+      isPartiallyCompleted?: boolean;
+      completedCount?: number;
+      totalCount?: number;
+    }
+  > = {};
 
   for (let d = 1; d <= daysInMonth; d++) {
     const curDate = new Date(year, month, d);
     const dateStr = formatDateKey(curDate);
-    const dayOfWeek = curDate.getDay();
-    const fullDayName = FULL_WEEKDAY_NAMES[dayOfWeek];
 
     // Determine the template version active on THIS specific calendar date
     const activeVersion = getActiveTemplateVersionForDateSync(userId, curDate, versions);
-    const hasActiveTemplate = activeVersion !== null;
-    const effectiveSchedule = activeVersion?.scheduled_days || [];
-
-    const isPlanned = hasActiveTemplate && effectiveSchedule.includes(fullDayName);
     const isPastOrToday = dateStr <= clockDateStr;
+    const dayLogs = logsByDate[dateStr] || [];
 
-    if (isPlanned && isPastOrToday) {
+    const compResult = calculateWorkoutDayCompletion(
+      curDate,
+      activeVersion,
+      dayLogs,
+      isPastOrToday,
+      fallbackTemplateDays
+    );
+
+    if (compResult.isScheduled && isPastOrToday) {
       plannedWorkouts++;
     }
 
-    const dayLogs = logsByDate[dateStr] || [];
-    const hasWorkout = dayLogs.length > 0;
-
-    let status: WorkoutDayStatus = 'REST';
-    if (hasWorkout) {
+    if (compResult.isCompleted || compResult.status === 'EXTRA') {
       workoutsCompleted++;
-      const isExtra = dayLogs.some(
-        (l) => l.day_name === 'Extra Workout' || (!l.template_day_id && !isPlanned)
-      );
-      status = isExtra ? 'EXTRA' : 'COMPLETED';
-    } else {
-      if (!hasActiveTemplate) {
-        // A) NO TEMPLATE ACTIVE ON THIS DATE -> BLANK / NEUTRAL (Never missed)
-        status = 'NONE';
-      } else if (isPlanned && isPastOrToday) {
-        // D) TEMPLATE ACTIVE + SCHEDULED + WORKOUT NOT COMPLETED -> MISSED
-        status = 'MISSED';
-      } else {
-        // B) TEMPLATE ACTIVE + NOT A SCHEDULED DAY -> REST
-        status = 'REST';
-      }
     }
 
     dailyMap[dateStr] = {
-      status,
+      status: compResult.status,
       log:
         dayLogs.length > 0
           ? {
@@ -935,7 +1215,10 @@ export async function fetchMonthlyWorkoutHistory(
               workout_log_sets: dayLogs.flatMap((l) => l.workout_log_sets || []),
             }
           : null,
-      isPlanned,
+      isPlanned: compResult.isScheduled,
+      isPartiallyCompleted: compResult.isPartiallyCompleted,
+      completedCount: compResult.completedScheduledExercises,
+      totalCount: compResult.totalScheduledExercises,
     };
   }
 

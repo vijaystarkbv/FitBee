@@ -5,9 +5,27 @@ interface WorkoutCalendarProps {
   viewDate: Date;
   onPrevMonth: () => void;
   onNextMonth: () => void;
-  dailyMap: Record<string, { status: WorkoutDayStatus; log: any | null; isPlanned: boolean }>;
+  dailyMap: Record<
+    string,
+    {
+      status: WorkoutDayStatus;
+      log: any | null;
+      isPlanned: boolean;
+      isPartiallyCompleted?: boolean;
+      completedCount?: number;
+      totalCount?: number;
+    }
+  >;
   todayDateStr: string;
-  onSelectDate: (date: Date, status: WorkoutDayStatus, isPlanned: boolean, log: any | null) => void;
+  onSelectDate: (
+    date: Date,
+    status: WorkoutDayStatus,
+    isPlanned: boolean,
+    log: any | null,
+    isPartiallyCompleted?: boolean,
+    completedCount?: number,
+    totalCount?: number
+  ) => void;
 }
 
 const WEEK_HEADERS = ['M', 'T', 'W', 'TH', 'F', 'S', 'SU'];
@@ -226,6 +244,9 @@ export const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
             const status = dayInfo.status;
             const isPlanned = dayInfo.isPlanned;
             const log = dayInfo.log;
+            const isPartiallyCompleted = dayInfo.isPartiallyCompleted;
+            const completedCount = dayInfo.completedCount;
+            const totalCount = dayInfo.totalCount;
 
             const fullDateLabel = cellDate.toLocaleDateString('en-US', {
               month: 'long',
@@ -241,6 +262,9 @@ export const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
               status,
               isPlanned,
               log,
+              isPartiallyCompleted,
+              completedCount,
+              totalCount,
               dateStr,
               isToday,
               dayNum,
@@ -327,7 +351,17 @@ export const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({
                   <button
                     key={cell.dateStr}
                     type="button"
-                    onClick={() => onSelectDate(cell.cellDate!, cell.status, cell.isPlanned, cell.log)}
+                    onClick={() =>
+                      onSelectDate(
+                        cell.cellDate!,
+                        cell.status,
+                        cell.isPlanned,
+                        cell.log,
+                        cell.isPartiallyCompleted,
+                        cell.completedCount,
+                        cell.totalCount
+                      )
+                    }
                     aria-label={cell.ariaLabel}
                     style={{
                       position: 'relative',

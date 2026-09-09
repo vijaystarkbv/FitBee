@@ -20,6 +20,14 @@ import {
 } from './notificationMessages';
 import { calculateNutritionTargetsScore, getUserNutritionTargets } from './nutritionHistoryService';
 import { Profile } from '../types/database.types';
+import {
+  getUserTemplateVersions,
+  getActiveTemplateVersionForDateSync,
+} from './workoutTemplateVersionService';
+import {
+  calculateWorkoutDayCompletion,
+  fetchWorkoutLogsForRange,
+} from './workoutHistoryService';
 
 export const EVALUATION_SLOTS = ['08:00', '12:00', '15:00', '19:00', '22:00'] as const;
 export type EvaluationSlot = (typeof EVALUATION_SLOTS)[number];
@@ -217,9 +225,9 @@ export function getLocalDayBoundaries(localDate: string, timezone: string = 'UTC
 export async function calculateRawDailyState(
   userId: string,
   localDate: string,
-  weekdayName: string,
+  _weekdayName?: string,
   profile?: Profile | null,
-  timezone: string = 'UTC'
+  _timezone: string = 'UTC'
 ): Promise<RawCategoryState> {
   // ─────────────────────────────────────────────────────────────
   // 1. HABITS
@@ -282,6 +290,20 @@ export async function calculateRawDailyState(
       isLoggedToday = currentCalories > 0 || (Number(nutLog.total_protein) || 0) > 0;
 
       if (profile) {
+        // Fetch walking burn for net calorie evaluation
+        let walkingBurn = 0;
+        try {
+          const { data: walkLog } = await supabase
+            .from('daily_walking_logs')
+            .select('calories_burned')
+            .eq('user_id', userId)
+            .eq('date', localDate)
+            .maybeSingle();
+          walkingBurn = Number(walkLog?.calories_burned) || 0;
+        } catch (_) {
+          walkingBurn = 0;
+        }
+
         const targets = getUserNutritionTargets(profile, localDate);
         const scoreResult = calculateNutritionTargetsScore(
           {
@@ -290,7 +312,8 @@ export async function calculateRawDailyState(
             carbs: Number(nutLog.total_carbs) || 0,
             fat: Number(nutLog.total_fat) || 0,
           },
-          targets
+          targets,
+          walkingBurn
         );
 
         isTargetsMet = scoreResult.isCompleted;
@@ -315,49 +338,17 @@ export async function calculateRawDailyState(
   let isCompletedToday = false;
 
   try {
-    // Check if user has an active workout template with today enabled
-    const { data: templates } = await supabase
-      .from('workout_templates')
-      .select('id, name, workout_template_days(id, day_name, is_enabled)')
-      .eq('user_id', userId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+    const versions = await getUserTemplateVersions(userId);
+    const [y, m, dayNum] = localDate.split('-').map(Number);
+    const targetDate = new Date(y, m - 1, dayNum);
+    const activeVersion = getActiveTemplateVersionForDateSync(userId, targetDate, versions);
 
-    if (templates && templates.length > 0) {
-      const activeTemplate = templates[0];
-      const enabledDayNames = new Set(
-        (activeTemplate.workout_template_days || [])
-          .filter((d: any) => d.is_enabled && d.day_name)
-          .map((d: any) => d.day_name.trim().toLowerCase())
-      );
+    const workoutLogs = await fetchWorkoutLogsForRange(userId, localDate, localDate);
+    const completion = calculateWorkoutDayCompletion(targetDate, activeVersion, workoutLogs, true);
 
-      isScheduledToday = enabledDayNames.has(weekdayName.trim().toLowerCase());
-
-      if (isScheduledToday) {
-        // Query workout_logs for local date boundaries
-        const { startIso, endIso } = getLocalDayBoundaries(localDate, timezone);
-
-        const { data: workoutLogs } = await supabase
-          .from('workout_logs')
-          .select('id, completed_at, start_time, workout_log_sets(id)')
-          .eq('user_id', userId)
-          .gte('start_time', startIso)
-          .lte('start_time', endIso);
-
-        const hasCompletedLog = (workoutLogs || []).some(
-          (log: any) => log.completed_at !== null || (log.workout_log_sets && log.workout_log_sets.length > 0)
-        );
-
-        isCompletedToday = hasCompletedLog;
-        workoutPending = !isCompletedToday;
-      } else {
-        // Today is not a scheduled workout day -> no workout notification
-        workoutPending = false;
-      }
-    } else {
-      // No workout templates exist -> never send workout notification
-      workoutPending = false;
-    }
+    isScheduledToday = completion.isScheduled;
+    isCompletedToday = completion.isCompleted;
+    workoutPending = isScheduledToday && !isCompletedToday;
   } catch (err) {
     console.warn('Error evaluating workout for notification:', err);
   }
