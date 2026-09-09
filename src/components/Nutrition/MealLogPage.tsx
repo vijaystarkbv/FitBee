@@ -32,6 +32,7 @@ export const MealLogPage: React.FC<MealLogPageProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Called when user parses text or edits food items in MealInput
   const handleMealParsed = (
@@ -41,6 +42,7 @@ export const MealLogPage: React.FC<MealLogPageProps> = ({
   ) => {
     setParsedMealState({ rawText, foods, initialTotals: totals });
     setIsSaved(false); // Reset saved state for new/updated parsing
+    setSaveError(null);
   };
 
   // Called when user clicks Save Meal on the Review Card
@@ -48,6 +50,7 @@ export const MealLogPage: React.FC<MealLogPageProps> = ({
     if (!parsedMealState || isSaved || isSaving) return;
 
     setIsSaving(true);
+    setSaveError(null);
     try {
       await onSaveMeal(
         parsedMealState.rawText,
@@ -55,8 +58,9 @@ export const MealLogPage: React.FC<MealLogPageProps> = ({
         adjustedMacros
       );
       setIsSaved(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving meal:', err);
+      setSaveError(err?.message || 'Failed to save meal. Please check connection and try again.');
     } finally {
       setIsSaving(false);
     }
@@ -130,6 +134,32 @@ export const MealLogPage: React.FC<MealLogPageProps> = ({
           isExternalSaved={isSaved}
         />
       </div>
+
+      {/* ── Save Error Banner ── */}
+      {saveError && (
+        <div style={{
+          background: '#FEF2F2',
+          border: '1px solid #F87171',
+          borderRadius: 10,
+          padding: '12px 16px',
+          marginBottom: 16,
+          color: '#991B1B',
+          fontSize: 14,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          fontFamily: "'Inter', sans-serif",
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <div style={{ flex: 1 }}>
+            <strong>Save Error:</strong> {saveError}
+          </div>
+        </div>
+      )}
 
       {/* ── Editable Nutrition Review Card (Appears after Gemini returns) ── */}
       {parsedMealState && (

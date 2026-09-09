@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './services/supabaseClient';
 import { LoginForm } from './components/Auth/LoginForm';
 import { OnboardingWizard } from './components/Onboarding/OnboardingWizard';
@@ -14,6 +14,8 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ProfileSettings } from './components/Profile/ProfileSettings';
 import { NotificationSettings } from './components/Settings/NotificationSettings';
 import { initRealtime, cleanupRealtime, REALTIME_EVENTS } from './services/realtimeService';
+import { useClock } from './hooks/useClock';
+import { getTodayDateString } from './utils/formatters';
 import {
   isPushNotificationSupported,
   getNotificationPermissionState,
@@ -45,6 +47,9 @@ function getInitialTab(): NavTab {
 }
 
 export const App: React.FC = () => {
+  const { todayKey } = useClock();
+  const prevDateKeyRef = useRef<string>(todayKey);
+
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTabState] = useState<NavTab>(getInitialTab);
@@ -62,6 +67,37 @@ export const App: React.FC = () => {
   const [todayNutrition, setTodayNutrition] = useState<NutritionLog | null>(null);
   const [todayMeals, setTodayMeals] = useState<MealEntry[]>([]);
   const [settingsSubView, setSettingsSubView] = useState<'main' | 'profile' | 'notifications'>('main');
+
+  // React to calendar date rollover (midnight crossing, time machine jump, or waking from sleep)
+  useEffect(() => {
+    if (prevDateKeyRef.current !== todayKey) {
+      console.log(`[FitBee] Calendar day rolled over: ${prevDateKeyRef.current} -> ${todayKey}`);
+      prevDateKeyRef.current = todayKey;
+
+      // Invalidate stale in-memory nutrition log so it is never reused across days
+      setTodayNutrition(null);
+      setTodayMeals([]);
+
+      if (session?.user?.id) {
+        fetchUserData(session.user.id, false);
+      }
+    }
+  }, [todayKey, session?.user?.id]);
+
+  // Also listen for fitbee:date_changed window event triggered by ClockService
+  useEffect(() => {
+    const handleDateChanged = (e: Event) => {
+      const customEv = e as CustomEvent<{ oldDate: string; newDate: string }>;
+      console.log('[FitBee] fitbee:date_changed event received:', customEv.detail);
+      setTodayNutrition(null);
+      setTodayMeals([]);
+      if (session?.user?.id) {
+        fetchUserData(session.user.id, false);
+      }
+    };
+    window.addEventListener('fitbee:date_changed', handleDateChanged);
+    return () => window.removeEventListener('fitbee:date_changed', handleDateChanged);
+  }, [session?.user?.id]);
 
   // Listen for deep link events from the service worker push notification clicks
   useEffect(() => {
@@ -130,7 +166,11 @@ export const App: React.FC = () => {
           fetchUserData(session.user.id);
         }
       } else {
+        // Full clean reset on sign out to prevent cross-account leaks
         prevUserId = null;
+        setProfile(null);
+        setTodayNutrition(null);
+        setTodayMeals([]);
         setLoading(false);
       }
     });
@@ -170,10 +210,11 @@ export const App: React.FC = () => {
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       setProfile(prof);
 
-      // Fetch today's nutrition log and meal entries
+      // Fetch today's nutrition log and meal entries using current local calendar date
       if (prof) {
         try {
-          const nutLog = await getOrCreateTodayNutritionLog(userId);
+          const currentToday = getTodayDateString();
+          const nutLog = await getOrCreateTodayNutritionLog(userId, currentToday);
           setTodayNutrition(nutLog);
 
           const meals = await getTodayMeals(nutLog.id);
@@ -189,22 +230,34 @@ export const App: React.FC = () => {
     }
   };
 
-  /* ── Meal saving integration ── */
+  /* ── Meal saving integration (Strictly Defensive Against Stale Previous-Day Logs) ── */
   const handleSaveMeal = async (
     rawText: string,
     foods: ParsedFoodItem[],
     totals: { calories: number; protein: number; carbs: number; fat: number }
   ): Promise<MealEntry> => {
-    if (!session) throw new Error('User not logged in');
+    if (!session?.user) throw new Error('User not logged in');
 
-    const log = todayNutrition || (await getOrCreateTodayNutritionLog(session.user.id));
+    const currentToday = getTodayDateString();
+    let log = todayNutrition;
+
+    // Strict defensive check: never trust a stale in-memory log across midnight
+    if (!log || log.date !== currentToday || log.user_id !== session.user.id) {
+      console.warn(
+        `[FitBee] In-memory nutrition log is stale or missing (log date: ${log?.date}, current today: ${currentToday}). Fetching/creating current day log...`
+      );
+      log = await getOrCreateTodayNutritionLog(session.user.id, currentToday);
+      setTodayNutrition(log);
+      const refreshedMeals = await getTodayMeals(log.id);
+      setTodayMeals(refreshedMeals);
+    }
 
     // Save to DB via nutritionService
     const createdMeal = await saveMealEntry(log.id, rawText, foods, totals);
 
     // 1. Instantly update today's nutrition totals in memory for Home Dashboard progress rings
     setTodayNutrition((prev) => {
-      if (!prev) return log;
+      if (!prev || prev.id !== log.id) return log;
       return {
         ...prev,
         total_calories: (prev.total_calories || 0) + totals.calories,

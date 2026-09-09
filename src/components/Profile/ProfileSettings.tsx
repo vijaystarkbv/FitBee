@@ -19,6 +19,7 @@ import {
 } from '../../services/geminiService';
 import { getStatementsFromIds } from '../../services/nutritionStatementLibrary';
 import { calculateWeeklyAdherenceSummaries } from '../../services/nutritionHistoryService';
+import { getTodayDateString } from '../../utils/formatters';
 
 interface ProfileSettingsProps {
   profile: Profile;
@@ -327,7 +328,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
         // Determine evaluation period: from earliest recent update (or 14 days ago) up to today
         const todayStr = progressUpdate.recorded_at
           ? progressUpdate.recorded_at.split('T')[0]
-          : clock.now().toISOString().split('T')[0];
+          : getTodayDateString();
 
         let startPeriodStr = '';
         if (recentUpdates && recentUpdates.length > 0) {
@@ -384,7 +385,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
           },
           recent_updates: [
             ...recentUpdates.map((u) => ({
-              date: u.recorded_at ? u.recorded_at.split('T')[0] : (u.date || clock.now().toISOString().split('T')[0]),
+              date: u.recorded_at ? u.recorded_at.split('T')[0] : (u.date || getTodayDateString()),
               weight: Number(u.weight_kg ?? u.weight ?? 70),
               previous_weight: u.previous_weight_kg ?? u.previous_weight ?? undefined,
               target_calories_at_time: Number(u.active_target_calories ?? u.target_calories_at_time ?? 2000),
@@ -395,7 +396,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
               user_action: u.user_action,
             })),
             {
-              date: progressUpdate.recorded_at ? progressUpdate.recorded_at.split('T')[0] : clock.now().toISOString().split('T')[0],
+              date: progressUpdate.recorded_at ? progressUpdate.recorded_at.split('T')[0] : getTodayDateString(),
               weight: Number(progressUpdate.weight_kg ?? progressUpdate.weight ?? cleanWeight),
               previous_weight: progressUpdate.previous_weight_kg ?? progressUpdate.previous_weight ?? previousWeight,
               target_calories_at_time: Number(progressUpdate.active_target_calories ?? progressUpdate.target_calories_at_time ?? currentActiveCal),
@@ -572,7 +573,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
     // If no updates in DB but current weight exists, provide single point
     if (points.length === 0 && weightKg > 0) {
       points.push({
-        date: clock.now().toISOString().split('T')[0],
+        date: getTodayDateString(),
         weight: weightKg,
         target: targetWeightKg,
         raw: {} as any,

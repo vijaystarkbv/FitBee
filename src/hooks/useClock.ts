@@ -11,13 +11,15 @@ export function useClock() {
   }, []);
 
   // Subscribe to clock updates using React 18 useSyncExternalStore with stable snapshot
-  const clockSnapshot = useSyncExternalStore(subscribe, getSnapshot, () => 'REAL_TIME');
+  const clockSnapshot = useSyncExternalStore(subscribe, getSnapshot, () => clock.getSnapshot());
 
   // Memoize now against the clock snapshot so normal renders don't re-create Date instances
   const now = useMemo(() => clock.now(), [clockSnapshot]);
+  const todayKey = useMemo(() => clock.getTodayDateKey(), [clockSnapshot]);
 
   return {
     now,
+    todayKey,
     clockSnapshot,
     isSimulated: clock.isSimulated(),
     simulatedDate: clock.getSimulatedDate(),

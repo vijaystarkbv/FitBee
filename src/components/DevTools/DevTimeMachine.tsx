@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useClock } from '../../hooks/useClock';
+import { formatDateKey } from '../../utils/formatters';
 
 export const DevTimeMachine: React.FC = () => {
   // Production Safety: Do NOT render anything in production builds
@@ -18,8 +19,8 @@ export const DevTimeMachine: React.FC = () => {
     year: 'numeric',
   });
 
-  // ISO date string for <input type="date"> (YYYY-MM-DD)
-  const isoDateString = now.toISOString().split('T')[0];
+  // Local calendar date string for <input type="date"> (YYYY-MM-DD)
+  const isoDateString = formatDateKey(now);
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.value) return;

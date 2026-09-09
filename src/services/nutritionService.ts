@@ -3,39 +3,63 @@ import { NutritionLog, MealEntry, ParsedFoodItem } from '../types/database.types
 import { getTodayDateString } from '../utils/formatters';
 
 /**
- * Gets or creates today's nutrition log row for the user
+ * Gets or creates today's (or target date's) nutrition log row for the user.
+ * Concurrency-safe: handles parallel invocations without unique constraint conflicts.
  */
-export async function getOrCreateTodayNutritionLog(userId: string): Promise<NutritionLog> {
-  const today = getTodayDateString();
+export async function getOrCreateTodayNutritionLog(
+  userId: string,
+  targetDateStr?: string
+): Promise<NutritionLog> {
+  const targetDate = targetDateStr || getTodayDateString();
 
-  const { data: existing } = await supabase
+  // 1. Check existing record
+  const { data: existing, error: selectErr } = await supabase
     .from('nutrition_logs')
     .select('*')
     .eq('user_id', userId)
-    .eq('date', today)
+    .eq('date', targetDate)
     .maybeSingle();
 
   if (existing) return existing;
 
-  const { data: created, error } = await supabase
+  // 2. Concurrency-safe insert / upsert on conflict (user_id, date)
+  const { data: created, error: insertErr } = await supabase
     .from('nutrition_logs')
-    .insert({
-      user_id: userId,
-      date: today,
-      total_calories: 0,
-      total_protein: 0,
-      total_carbs: 0,
-      total_fat: 0,
-    })
+    .upsert(
+      {
+        user_id: userId,
+        date: targetDate,
+        total_calories: 0,
+        total_protein: 0,
+        total_carbs: 0,
+        total_fat: 0,
+      },
+      { onConflict: 'user_id,date', ignoreDuplicates: true }
+    )
     .select('*')
+    .maybeSingle();
+
+  if (created) return created;
+
+  // 3. Fallback: if ignoreDuplicates suppressed insertion because another concurrent request
+  // created it in the exact same millisecond, fetch that created row
+  const { data: fallback, error: fallbackErr } = await supabase
+    .from('nutrition_logs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('date', targetDate)
     .single();
 
-  if (error) throw error;
-  return created;
+  if (fallback) return fallback;
+  if (fallbackErr) throw fallbackErr;
+  if (insertErr) throw insertErr;
+  if (selectErr) throw selectErr;
+  throw new Error(`Failed to get or create nutrition log for user ${userId} on ${targetDate}`);
 }
 
 /**
- * Saves a new meal entry and updates the daily nutrition log aggregates
+ * Saves a new meal entry and authoritatively updates the daily nutrition log aggregates
+ * by summing all existing meal entries to prevent numerical drift or race condition discrepancies.
  */
 export async function saveMealEntry(
   nutritionLogId: string,
@@ -78,26 +102,35 @@ export async function saveMealEntry(
     throw error;
   }
 
-  // Increment total macros on nutrition_log
-  const { data: currentLog } = await supabase
-    .from('nutrition_logs')
-    .select('*')
-    .eq('id', nutritionLogId)
-    .single();
+  // Authoritative re-sum: calculate exact sum of all meal entries for this daily log
+  const { data: allMeals, error: mealsErr } = await supabase
+    .from('meal_entries')
+    .select('calories, protein, carbs, fat')
+    .eq('nutrition_log_id', nutritionLogId);
 
-  if (currentLog) {
+  if (!mealsErr && allMeals) {
+    const authoritativeTotals = allMeals.reduce(
+      (acc, m) => ({
+        calories: acc.calories + (Number(m.calories) || 0),
+        protein: acc.protein + (Number(m.protein) || 0),
+        carbs: acc.carbs + (Number(m.carbs) || 0),
+        fat: acc.fat + (Number(m.fat) || 0),
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+
     const { error: updateErr } = await supabase
       .from('nutrition_logs')
       .update({
-        total_calories: (Number(currentLog.total_calories) || 0) + safeTotals.calories,
-        total_protein: (Number(currentLog.total_protein) || 0) + safeTotals.protein,
-        total_carbs: (Number(currentLog.total_carbs) || 0) + safeTotals.carbs,
-        total_fat: (Number(currentLog.total_fat) || 0) + safeTotals.fat,
+        total_calories: authoritativeTotals.calories,
+        total_protein: authoritativeTotals.protein,
+        total_carbs: authoritativeTotals.carbs,
+        total_fat: authoritativeTotals.fat,
       })
       .eq('id', nutritionLogId);
 
     if (updateErr) {
-      console.error('Error updating nutrition_logs:', updateErr);
+      console.error('Error updating nutrition_logs authoritative totals:', updateErr);
       throw updateErr;
     }
   }

@@ -271,10 +271,11 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     // Save session if duration > 0
     if (finalSeconds > 0) {
       try {
+        const activeDateKey = formatDateKey(now);
         await recordHabitSession(
           profile.id,
           habit ? habit.id : timerToSave.habitId,
-          todayKey,
+          activeDateKey,
           timerToSave.startedAt,
           endedIso,
           finalSeconds,
@@ -293,6 +294,7 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
   const handleToggleChecklist = async (habitId: string) => {
     const currentLog = todayLogs[habitId];
     const newStatus = !currentLog?.is_completed;
+    const activeDateKey = formatDateKey(now);
 
     // Optimistic UI update
     setTodayLogs((prev) => ({
@@ -302,7 +304,7 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
           id: `tmp_${Date.now()}`,
           user_id: profile.id,
           habit_id: habitId,
-          date: todayKey,
+          date: activeDateKey,
           target_duration_seconds: null,
           actual_duration_seconds: 0,
           created_at: new Date().toISOString(),
@@ -314,7 +316,7 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     }));
 
     try {
-      await toggleChecklistHabit(profile.id, habitId, todayKey, newStatus);
+      await toggleChecklistHabit(profile.id, habitId, activeDateKey, newStatus);
       await loadAllData();
     } catch (err) {
       console.error('Failed to toggle checklist habit:', err);

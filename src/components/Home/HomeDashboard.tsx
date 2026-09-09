@@ -16,8 +16,8 @@ interface HomeDashboardProps {
   onNavigateSettings: () => void;
 }
 
-function getGreeting(): string {
-  const hour = new Date().getHours();
+function getGreeting(d: Date): string {
+  const hour = d.getHours();
   if (hour < 12) return 'Good Morning';
   if (hour < 17) return 'Good Afternoon';
   return 'Good Evening';
@@ -31,7 +31,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 }) => {
   const { now } = useClock();
   const dateStr = useMemo(() => formatDateKey(now), [now]);
-  const greeting = useMemo(() => getGreeting(), []);
+  const greeting = useMemo(() => getGreeting(now), [now]);
   const displayName = profile.display_name || 'there';
 
   // Walking activity state

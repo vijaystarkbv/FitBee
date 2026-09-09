@@ -13,6 +13,7 @@ import {
   resolveGoalDirection,
   calculateDeterministicTargets,
 } from './geminiService';
+import { getTodayDateString } from '../utils/formatters';
 
 // Local storage keys for resilient offline/local state
 const TARGET_VERSIONS_KEY = 'fitbee_target_versions_';
@@ -290,7 +291,7 @@ export async function recordProgressUpdate(
     user_selected_carbs: updateData.user_selected_carbs ?? null,
     user_selected_fat: updateData.user_selected_fat ?? null,
     created_at: nowIso,
-    date: nowIso.split('T')[0],
+    date: getTodayDateString(),
     weight: Number(updateData.weight_kg || updateData.weight || 70),
     previous_weight: updateData.previous_weight_kg ?? updateData.previous_weight ?? undefined,
     target_calories_at_time: Number(updateData.active_target_calories || updateData.target_calories_at_time || 2000),
