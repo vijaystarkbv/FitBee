@@ -409,8 +409,8 @@ async function runScheduledNotifications(env: Env): Promise<{
 
         results.processedUsers++;
 
-        // Evaluate decision engine
-        const evaluation = await evaluateNotificationDecision(settings.user_id, matchingSlot);
+        // Evaluate decision engine with service role client to bypass RLS in worker environment
+        const evaluation = await evaluateNotificationDecision(settings.user_id, matchingSlot, undefined, [], supabase);
 
         if (!evaluation.shouldSend || !evaluation.message) {
           results.skippedCount++;
@@ -483,9 +483,10 @@ export default {
         const authHeader = request.headers.get('Authorization') || '';
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
+        const supabaseClient = getWorkerSupabase(env, token);
+
         if (!userId && token) {
-          const supabase = getWorkerSupabase(env, token);
-          const { data: { user } } = await supabase.auth.getUser();
+          const { data: { user } } = await supabaseClient.auth.getUser();
           if (user) {
             userId = user.id;
           }
@@ -499,8 +500,8 @@ export default {
         const sendPush = Boolean(body?.sendPush);
         const testPayload = body?.testPayload;
 
-        // Run decision engine evaluation
-        const evaluation = await evaluateNotificationDecision(userId, slotOverride);
+        // Run decision engine evaluation with worker client
+        const evaluation = await evaluateNotificationDecision(userId, slotOverride, undefined, [], supabaseClient);
 
         let pushResult: any = null;
 

@@ -4,6 +4,7 @@ import { supabase } from './supabaseClient';
 export const REALTIME_EVENTS = {
   HABITS_UPDATED: 'fitbee:habits_updated',
   HABIT_SESSIONS_UPDATED: 'fitbee:habit_sessions_updated',
+  ACTIVE_TIMER_UPDATED: 'fitbee:active_timer_updated',
   HABIT_LOGS_UPDATED: 'fitbee:habit_logs_updated',
   WALKING_UPDATED: 'fitbee:walking_updated',
   WORKOUT_UPDATED: 'fitbee:workout_updated',
@@ -61,7 +62,7 @@ export function initRealtime(userId: string): () => void {
     }
   );
 
-  // 2. Habit timer sessions
+  // 2. Habit timer sessions (completed)
   channel.on(
     'postgres_changes',
     {
@@ -72,6 +73,20 @@ export function initRealtime(userId: string): () => void {
     },
     (payload) => {
       dispatchSyncEvent(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, { payload, userId });
+    }
+  );
+
+  // 2b. Active Habit Sessions (Live timer state synchronization across devices)
+  channel.on(
+    'postgres_changes',
+    {
+      event: '*',
+      schema: 'public',
+      table: 'active_habit_sessions',
+      filter: `user_id=eq.${userId}`,
+    },
+    (payload) => {
+      dispatchSyncEvent(REALTIME_EVENTS.ACTIVE_TIMER_UPDATED, { payload, userId });
     }
   );
 
@@ -124,6 +139,20 @@ export function initRealtime(userId: string): () => void {
       event: '*',
       schema: 'public',
       table: 'nutrition_logs',
+      filter: `user_id=eq.${userId}`,
+    },
+    (payload) => {
+      dispatchSyncEvent(REALTIME_EVENTS.NUTRITION_UPDATED, { payload, userId });
+    }
+  );
+
+  // 6b. Meal entries (Individual meal entries synchronization across devices)
+  channel.on(
+    'postgres_changes',
+    {
+      event: '*',
+      schema: 'public',
+      table: 'meal_entries',
       filter: `user_id=eq.${userId}`,
     },
     (payload) => {

@@ -188,6 +188,7 @@ export interface ParsedFoodItem {
 export interface MealEntry {
   id: string;
   nutrition_log_id: string;
+  user_id?: string;
   raw_text: string;
   created_at: string;
   calories: number;
@@ -228,6 +229,21 @@ export interface HabitSession {
   ended_at: string;
   duration_seconds: number;
   created_at: string;
+}
+
+export type ActiveHabitStatus = 'RUNNING' | 'PAUSED';
+
+export interface ActiveHabitSession {
+  id: string;
+  user_id: string;
+  habit_id: string;
+  date: string; // YYYY-MM-DD
+  status: ActiveHabitStatus;
+  started_at: string;
+  accumulated_seconds: number;
+  last_resumed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface HabitLog {

@@ -39,10 +39,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
   // ── Form State ──
   const [displayName, setDisplayName] = useState<string>(profile.display_name || '');
   const [sex, setSex] = useState<string>((profile.gender || 'male').toLowerCase());
-  const [age, setAge] = useState<number>(profile.age || 25);
-  const [heightCm, setHeightCm] = useState<number>(profile.height_cm || 170);
-  const [weightKg, setWeightKg] = useState<number>(profile.weight_kg || 70);
-  const [targetWeightKg, setTargetWeightKg] = useState<number>(profile.target_weight_kg || profile.weight_kg || 70);
+  const [age, setAge] = useState<number | string>(profile.age || 25);
+  const [heightCm, setHeightCm] = useState<number | string>(profile.height_cm || 170);
+  const [weightKg, setWeightKg] = useState<number | string>(profile.weight_kg || 70);
+  const [targetWeightKg, setTargetWeightKg] = useState<number | string>(profile.target_weight_kg || profile.weight_kg || 70);
   const [goal, setGoal] = useState<string>(profile.goal || 'maintain_weight');
   const [activityLevel, setActivityLevel] = useState<string>(profile.activity_level || 'moderate');
   const [heightUnit] = useState<'cm' | 'ft'>(profile.height_unit || 'cm');
@@ -56,10 +56,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
 
   // Manual editor inputs
   const [isEditingTargets, setIsEditingTargets] = useState<boolean>(false);
-  const [editCalories, setEditCalories] = useState<number>(profile.target_calories || 2000);
-  const [editProtein, setEditProtein] = useState<number>(profile.target_protein || 120);
-  const [editCarbs, setEditCarbs] = useState<number>(profile.target_carbs || 250);
-  const [editFat, setEditFat] = useState<number>(profile.target_fat || 55);
+  const [editCalories, setEditCalories] = useState<number | string>(profile.target_calories || 2000);
+  const [editProtein, setEditProtein] = useState<number | string>(profile.target_protein || 120);
+  const [editCarbs, setEditCarbs] = useState<number | string>(profile.target_carbs || 250);
+  const [editFat, setEditFat] = useState<number | string>(profile.target_fat || 55);
 
   // ── Gemini Recommendation & History State ──
   const [pendingRecommendation, setPendingRecommendation] = useState<LongitudinalRecommendationResult | null>(null);
@@ -176,52 +176,69 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
   // ── Live Previews for Active Target Card ──
   const activeTargetPreview = useMemo(() => {
     return calculateLiveCaloriePreview(activeCalories, {
-      weight_kg: weightKg,
-      height_cm: heightCm,
-      age,
+      weight_kg: Number(weightKg) || Number(profile.weight_kg) || 70,
+      height_cm: Number(heightCm) || Number(profile.height_cm) || 170,
+      age: Number(age) || Number(profile.age) || 25,
       gender: sex,
       activity_level: activityLevel,
       goal,
     });
-  }, [activeCalories, weightKg, heightCm, age, sex, activityLevel, goal]);
+  }, [activeCalories, weightKg, heightCm, age, sex, activityLevel, goal, profile.weight_kg, profile.height_cm, profile.age]);
 
   // ── Live Previews for Manual Target Editor ──
   const liveCaloriePreview = useMemo(() => {
-    return calculateLiveCaloriePreview(editCalories, {
-      weight_kg: weightKg,
-      height_cm: heightCm,
-      age,
+    return calculateLiveCaloriePreview(Number(editCalories) || Number(profile.target_calories) || 2000, {
+      weight_kg: Number(weightKg) || Number(profile.weight_kg) || 70,
+      height_cm: Number(heightCm) || Number(profile.height_cm) || 170,
+      age: Number(age) || Number(profile.age) || 25,
       gender: sex,
       activity_level: activityLevel,
       goal,
     });
-  }, [editCalories, weightKg, heightCm, age, sex, activityLevel, goal]);
+  }, [editCalories, weightKg, heightCm, age, sex, activityLevel, goal, profile.target_calories, profile.weight_kg, profile.height_cm, profile.age]);
 
   const liveMacroSuitability = useMemo(() => {
+    const numCalories = Number(editCalories) || 0;
+    const numProtein = Number(editProtein) || 0;
+    const numCarbs = Number(editCarbs) || 0;
+    const numFat = Number(editFat) || 0;
+    const numWeight = Number(weightKg) || Number(profile.weight_kg) || 70;
+
     return evaluateLiveMacroSuitability(
-      { protein: editProtein, carbs: editCarbs, fat: editFat },
-      editCalories,
-      { weight_kg: weightKg, goal }
+      { protein: numProtein, carbs: numCarbs, fat: numFat },
+      numCalories,
+      { weight_kg: numWeight, goal }
     );
-  }, [editProtein, editCarbs, editFat, weightKg, editCalories, goal]);
+  }, [editProtein, editCarbs, editFat, weightKg, editCalories, goal, profile.weight_kg]);
 
   const liveConsistency = useMemo(() => {
-    return validateMacroCalorieConsistency(editCalories, {
-      protein: editProtein,
-      carbs: editCarbs,
-      fat: editFat,
+    const numCalories = Number(editCalories) || 0;
+    const numProtein = Number(editProtein) || 0;
+    const numCarbs = Number(editCarbs) || 0;
+    const numFat = Number(editFat) || 0;
+
+    return validateMacroCalorieConsistency(numCalories, {
+      protein: numProtein,
+      carbs: numCarbs,
+      fat: numFat,
     });
   }, [editCalories, editProtein, editCarbs, editFat]);
 
   // ── Auto-balance Helpers ──
   const handleAutoBalanceCarbs = () => {
-    const remainingCal = editCalories - (editProtein * 4) - (editFat * 9);
+    const cal = Number(editCalories) || 2000;
+    const prot = Number(editProtein) || 0;
+    const fat = Number(editFat) || 0;
+    const remainingCal = cal - (prot * 4) - (fat * 9);
     const balancedCarbs = Math.max(0, Math.round(remainingCal / 4));
     setEditCarbs(balancedCarbs);
   };
 
   const handleSyncCaloriesToMacros = () => {
-    const sum = (editProtein * 4) + (editCarbs * 4) + (editFat * 9);
+    const prot = Number(editProtein) || 0;
+    const carbs = Number(editCarbs) || 0;
+    const fat = Number(editFat) || 0;
+    const sum = (prot * 4) + (carbs * 4) + (fat * 9);
     setEditCalories(Math.round(sum / 10) * 10);
   };
 
@@ -231,10 +248,24 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
     setFeedback(null);
 
     const previousWeight = profile.weight_kg || 70;
-    const cleanWeight = Math.min(300, Math.max(30, Math.round((Number(weightKg) || 70) * 10) / 10));
-    const cleanTargetWeight = Math.min(300, Math.max(30, Math.round((Number(targetWeightKg) || 70) * 10) / 10));
-    const cleanHeight = Math.min(250, Math.max(100, Math.round((Number(heightCm) || 170) * 10) / 10));
-    const cleanAge = Math.min(120, Math.max(12, Math.round(Number(age) || 25)));
+    const previousTargetWeight = profile.target_weight_kg || profile.weight_kg || 70;
+    const previousHeight = profile.height_cm || 170;
+    const previousAge = profile.age || 25;
+
+    const parsedWeight = weightKg === '' ? previousWeight : Number(weightKg);
+    const parsedTargetWeight = targetWeightKg === '' ? previousTargetWeight : Number(targetWeightKg);
+    const parsedHeight = heightCm === '' ? previousHeight : Number(heightCm);
+    const parsedAge = age === '' ? previousAge : Number(age);
+
+    const safeWeight = Number.isFinite(parsedWeight) ? parsedWeight : previousWeight;
+    const safeTargetWeight = Number.isFinite(parsedTargetWeight) ? parsedTargetWeight : previousTargetWeight;
+    const safeHeight = Number.isFinite(parsedHeight) ? parsedHeight : previousHeight;
+    const safeAge = Number.isFinite(parsedAge) ? parsedAge : previousAge;
+
+    const cleanWeight = Math.min(300, Math.max(30, Math.round(safeWeight * 10) / 10));
+    const cleanTargetWeight = Math.min(300, Math.max(30, Math.round(safeTargetWeight * 10) / 10));
+    const cleanHeight = Math.min(250, Math.max(100, Math.round(safeHeight * 10) / 10));
+    const cleanAge = Math.min(120, Math.max(12, Math.round(safeAge)));
 
     setWeightKg(cleanWeight);
     setTargetWeightKg(cleanTargetWeight);
@@ -509,11 +540,31 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
     if (!profile.id) return;
 
     try {
+      const prevCal = profile.target_calories || 2000;
+      const prevProt = profile.target_protein || 120;
+      const prevCarbs = profile.target_carbs || 250;
+      const prevFat = profile.target_fat || 55;
+
+      const numCal = editCalories === '' ? prevCal : Number(editCalories);
+      const numProt = editProtein === '' ? prevProt : Number(editProtein);
+      const numCarbs = editCarbs === '' ? prevCarbs : Number(editCarbs);
+      const numFat = editFat === '' ? prevFat : Number(editFat);
+
+      const cleanCal = Math.max(800, Math.min(6000, Math.round(Number.isFinite(numCal) ? numCal : prevCal)));
+      const cleanProt = Math.max(20, Math.min(500, Math.round(Number.isFinite(numProt) ? numProt : prevProt)));
+      const cleanCarbs = Math.max(20, Math.min(800, Math.round(Number.isFinite(numCarbs) ? numCarbs : prevCarbs)));
+      const cleanFat = Math.max(10, Math.min(300, Math.round(Number.isFinite(numFat) ? numFat : prevFat)));
+
+      setEditCalories(cleanCal);
+      setEditProtein(cleanProt);
+      setEditCarbs(cleanCarbs);
+      setEditFat(cleanFat);
+
       const customTargets = {
-        calories: editCalories,
-        protein: editProtein,
-        carbs: editCarbs,
-        fat: editFat,
+        calories: cleanCal,
+        protein: cleanProt,
+        carbs: cleanCarbs,
+        fat: cleanFat,
       };
 
       // Create new target version with user_override
@@ -549,6 +600,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
 
   // ── SVG Weight Graph Calculations ──
   const graphData = useMemo(() => {
+    const currentWeightNum = Number(weightKg) || Number(profile.weight_kg) || 70;
+    const currentTargetWeightNum = Number(targetWeightKg) || Number(profile.target_weight_kg) || Number(profile.weight_kg) || 70;
+
     // Collect all chronological entries
     const points: Array<{ date: string; weight: number; target: number; delta?: number; raw: NutritionProgressUpdate }> = [];
 
@@ -563,7 +617,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
         points.push({
           date: dateStr,
           weight: w,
-          target: targetWeightKg,
+          target: currentTargetWeightNum,
           delta: d,
           raw: u,
         });
@@ -571,11 +625,11 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
     });
 
     // If no updates in DB but current weight exists, provide single point
-    if (points.length === 0 && weightKg > 0) {
+    if (points.length === 0 && currentWeightNum > 0) {
       points.push({
         date: getTodayDateString(),
-        weight: weightKg,
-        target: targetWeightKg,
+        weight: currentWeightNum,
+        target: currentTargetWeightNum,
         raw: {} as any,
       });
     }
@@ -585,7 +639,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
     }
 
     const weights = points.map((p) => p.weight);
-    weights.push(targetWeightKg);
+    weights.push(currentTargetWeightNum);
 
     const minWeight = Math.min(...weights);
     const maxWeight = Math.max(...weights);
@@ -603,7 +657,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
     const plotW = right - left;
     const plotH = bottom - top;
 
-    const targetY = top + ((maxY - targetWeightKg) / yRange) * plotH;
+    const targetY = top + ((maxY - currentTargetWeightNum) / yRange) * plotH;
 
     const coords = points.map((p, idx) => {
       const x = points.length === 1 ? left + plotW / 2 : left + (idx / (points.length - 1)) * plotW;
@@ -796,7 +850,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
                   type="number"
                   id="fitbee-edit-calories-input"
                   value={editCalories}
-                  onChange={(e) => setEditCalories(Math.max(800, Number(e.target.value) || 0))}
+                  onChange={(e) => setEditCalories(e.target.value)}
                   style={{
                     width: '100%',
                     padding: '7px 9px',
@@ -819,7 +873,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
                   type="number"
                   id="fitbee-edit-protein-input"
                   value={editProtein}
-                  onChange={(e) => setEditProtein(Math.max(20, Number(e.target.value) || 0))}
+                  onChange={(e) => setEditProtein(e.target.value)}
                   style={{
                     width: '100%',
                     padding: '7px 9px',
@@ -842,7 +896,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
                   type="number"
                   id="fitbee-edit-carbs-input"
                   value={editCarbs}
-                  onChange={(e) => setEditCarbs(Math.max(20, Number(e.target.value) || 0))}
+                  onChange={(e) => setEditCarbs(e.target.value)}
                   style={{
                     width: '100%',
                     padding: '7px 9px',
@@ -865,7 +919,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
                   type="number"
                   id="fitbee-edit-fat-input"
                   value={editFat}
-                  onChange={(e) => setEditFat(Math.max(10, Number(e.target.value) || 0))}
+                  onChange={(e) => setEditFat(e.target.value)}
                   style={{
                     width: '100%',
                     padding: '7px 9px',
@@ -1276,7 +1330,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
               value={age}
               min={12}
               max={100}
-              onChange={(e) => setAge(Math.max(12, Number(e.target.value) || 25))}
+              onChange={(e) => setAge(e.target.value)}
               style={{
                 width: '100%',
                 padding: '7px 10px',
@@ -1299,7 +1353,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
               value={heightCm}
               min={100}
               max={250}
-              onChange={(e) => setHeightCm(Math.max(100, Number(e.target.value) || 170))}
+              onChange={(e) => setHeightCm(e.target.value)}
               style={{
                 width: '100%',
                 padding: '7px 10px',
@@ -1324,7 +1378,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
               value={weightKg}
               min={30}
               max={300}
-              onChange={(e) => setWeightKg(Math.max(30, Number(e.target.value) || 70))}
+              onChange={(e) => setWeightKg(e.target.value)}
               style={{
                 width: '100%',
                 padding: '7px 10px',
@@ -1349,7 +1403,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
               value={targetWeightKg}
               min={30}
               max={300}
-              onChange={(e) => setTargetWeightKg(Math.max(30, Number(e.target.value) || 70))}
+              onChange={(e) => setTargetWeightKg(e.target.value)}
               style={{
                 width: '100%',
                 padding: '7px 10px',

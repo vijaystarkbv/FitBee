@@ -65,8 +65,17 @@ export async function saveMealEntry(
   nutritionLogId: string,
   rawText: string,
   parsedFoods: ParsedFoodItem[],
-  totals: { calories: number; protein: number; carbs: number; fat: number }
+  totals: { calories: number; protein: number; carbs: number; fat: number },
+  userId?: string
 ): Promise<MealEntry> {
+  let resolvedUserId = userId;
+  if (!resolvedUserId) {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      resolvedUserId = authData?.user?.id;
+    } catch (_) {}
+  }
+
   const safeTotals = {
     calories: Math.round(Number(totals.calories) || 0),
     protein: Math.round(Number(totals.protein) || 0),
@@ -83,17 +92,22 @@ export async function saveMealEntry(
     fat: Math.round(Number(f.fat) || 0),
   }));
 
+  const insertPayload: Record<string, any> = {
+    nutrition_log_id: nutritionLogId,
+    raw_text: rawText,
+    calories: safeTotals.calories,
+    protein: safeTotals.protein,
+    carbs: safeTotals.carbs,
+    fat: safeTotals.fat,
+    parsed_breakdown: safeFoods,
+  };
+  if (resolvedUserId) {
+    insertPayload.user_id = resolvedUserId;
+  }
+
   const { data: meal, error } = await supabase
     .from('meal_entries')
-    .insert({
-      nutrition_log_id: nutritionLogId,
-      raw_text: rawText,
-      calories: safeTotals.calories,
-      protein: safeTotals.protein,
-      carbs: safeTotals.carbs,
-      fat: safeTotals.fat,
-      parsed_breakdown: safeFoods,
-    })
+    .insert(insertPayload)
     .select('*')
     .single();
 

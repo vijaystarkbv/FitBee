@@ -4,12 +4,16 @@ import {
   fetchUserHabits,
   fetchHabitDataForDate,
   toggleChecklistHabit,
-  recordHabitSession,
   calculateHabitStreak,
   formatDuration,
+  formatDurationShort,
+  formatTimeAmPm,
   flushPendingHabitSessions,
-  stashPendingHabitSession,
-  generateUUID,
+  fetchAllActiveHabitSessions,
+  startHabitSession,
+  pauseHabitSession,
+  resumeHabitSession,
+  stopHabitSession,
 } from '../../services/habitService';
 import { formatDateKey } from '../../services/streakService';
 import { useClock } from '../../hooks/useClock';
@@ -19,6 +23,21 @@ import { HabitStreakCalendar } from './HabitStreakCalendar';
 import { HabitFourWeekChart } from './HabitFourWeekChart';
 import { REALTIME_EVENTS } from '../../services/realtimeService';
 import '../Home/home.css';
+
+export function formatTimerClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const hrs = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
+}
+
+export function getOrdinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
 
 interface DailyHitlistPageProps {
   profile: Profile;
@@ -133,10 +152,36 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     }
   }, [profile.id, todayKey, now]);
 
+  // Load active timer from Supabase active_habit_sessions
+  const loadActiveTimer = useCallback(async () => {
+    try {
+      const activeSessions = await fetchAllActiveHabitSessions(profile.id);
+      const currentActive = activeSessions.find((s) => s.date === todayKey);
+      if (currentActive) {
+        const timerState: ActiveTimerState = {
+          habitId: currentActive.habit_id,
+          status: currentActive.status === 'RUNNING' ? 'running' : 'paused',
+          startedAt: currentActive.started_at,
+          accumulatedSeconds: currentActive.accumulated_seconds || 0,
+          lastTickTimestamp: currentActive.last_resumed_at ? new Date(currentActive.last_resumed_at).getTime() : Date.now(),
+          dateKey: currentActive.date,
+        };
+        setActiveTimer(timerState);
+        setLiveElapsedSeconds(calculateCurrentElapsed(timerState));
+      } else {
+        setActiveTimer(null);
+        setLiveElapsedSeconds(0);
+      }
+    } catch (err) {
+      console.warn('Could not load active habit session from DB:', err);
+    }
+  }, [profile.id, todayKey]);
+
   useEffect(() => {
     loadAllData();
+    loadActiveTimer();
     flushPendingHabitSessions(profile.id);
-  }, [loadAllData, profile.id]);
+  }, [loadAllData, loadActiveTimer, profile.id]);
 
   // Listen for cross-device Realtime updates to habits, logs, and timer sessions
   useEffect(() => {
@@ -145,16 +190,47 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
       flushPendingHabitSessions(profile.id);
     };
 
+    const handleActiveTimerSync = (event: any) => {
+      const payload = event?.detail?.payload;
+      if (!payload) {
+        loadActiveTimer();
+        return;
+      }
+
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const row = payload.new;
+        if (row && row.date === todayKey) {
+          const timerState: ActiveTimerState = {
+            habitId: row.habit_id,
+            status: row.status === 'RUNNING' ? 'running' : 'paused',
+            startedAt: row.started_at,
+            accumulatedSeconds: row.accumulated_seconds || 0,
+            lastTickTimestamp: row.last_resumed_at ? new Date(row.last_resumed_at).getTime() : Date.now(),
+            dateKey: row.date,
+          };
+          setActiveTimer(timerState);
+          setLiveElapsedSeconds(calculateCurrentElapsed(timerState));
+        }
+      } else if (payload.eventType === 'DELETE') {
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        setActiveTimer(null);
+        setLiveElapsedSeconds(0);
+        loadAllData();
+      }
+    };
+
     window.addEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitsSync);
     window.addEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitsSync);
     window.addEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleHabitsSync);
+    window.addEventListener(REALTIME_EVENTS.ACTIVE_TIMER_UPDATED, handleActiveTimerSync);
 
     return () => {
       window.removeEventListener(REALTIME_EVENTS.HABIT_SESSIONS_UPDATED, handleHabitsSync);
       window.removeEventListener(REALTIME_EVENTS.HABIT_LOGS_UPDATED, handleHabitsSync);
       window.removeEventListener(REALTIME_EVENTS.HABITS_UPDATED, handleHabitsSync);
+      window.removeEventListener(REALTIME_EVENTS.ACTIVE_TIMER_UPDATED, handleActiveTimerSync);
     };
-  }, [loadAllData, profile.id]);
+  }, [loadAllData, loadActiveTimer, profile.id, todayKey]);
 
   // ─────────────────────────────────────────────────────────────
   // Midnight Reset Handling: Reload fresh data without killing active timer
@@ -165,9 +241,10 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
       prevDateKeyRef.current = todayKey;
       // Reload fresh data for the new day and flush any pending sessions
       loadAllData();
+      loadActiveTimer();
       flushPendingHabitSessions(profile.id);
     }
-  }, [todayKey, loadAllData, profile.id]);
+  }, [todayKey, loadAllData, loadActiveTimer, profile.id]);
 
   // ─────────────────────────────────────────────────────────────
   // Live Timer Interval & Background/Visibility Sync
@@ -207,7 +284,11 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
   // ─────────────────────────────────────────────────────────────
   // Timer Actions: Start, Pause, Resume, Stop
   // ─────────────────────────────────────────────────────────────
-  const handleStartTimer = (habitId: string) => {
+  const handleStartTimer = async (habitId: string) => {
+    if (activeTimer && activeTimer.habitId !== habitId) {
+      await handleStopTimer();
+    }
+
     const startedIso = now.toISOString();
     const newTimer: ActiveTimerState = {
       habitId,
@@ -219,9 +300,15 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     };
     setActiveTimer(newTimer);
     setLiveElapsedSeconds(0);
+
+    try {
+      await startHabitSession(profile.id, habitId, todayKey, startedIso);
+    } catch (err) {
+      console.warn('Failed to persist start session to Supabase:', err);
+    }
   };
 
-  const handlePauseTimer = () => {
+  const handlePauseTimer = async () => {
     if (!activeTimer || activeTimer.status !== 'running') return;
     const nowMs = Date.now();
     const delta = Math.max(0, Math.floor((nowMs - activeTimer.lastTickTimestamp) / 1000));
@@ -235,9 +322,15 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     };
     setActiveTimer(pausedTimer);
     setLiveElapsedSeconds(newAccum);
+
+    try {
+      await pauseHabitSession(profile.id, activeTimer.habitId);
+    } catch (err) {
+      console.warn('Failed to persist pause session to Supabase:', err);
+    }
   };
 
-  const handleResumeTimer = () => {
+  const handleResumeTimer = async () => {
     if (!activeTimer || activeTimer.status !== 'paused') return;
     const resumedTimer: ActiveTimerState = {
       ...activeTimer,
@@ -246,104 +339,55 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     };
     setActiveTimer(resumedTimer);
     setLiveElapsedSeconds(resumedTimer.accumulatedSeconds);
+
+    try {
+      await resumeHabitSession(profile.id, activeTimer.habitId);
+    } catch (err) {
+      console.warn('Failed to persist resume session to Supabase:', err);
+    }
   };
 
-  const handleStopTimer = () => {
+  const handleStopTimer = async () => {
     if (!activeTimer) return;
 
-    let finalSeconds = activeTimer.accumulatedSeconds;
-    if (activeTimer.status === 'running') {
-      const nowMs = Date.now();
-      const delta = Math.max(0, Math.floor((nowMs - activeTimer.lastTickTimestamp) / 1000));
-      finalSeconds += delta;
-    }
-
+    const timerToStop = activeTimer;
+    const habitId = timerToStop.habitId;
     const endedIso = new Date().toISOString();
-    const habit = habits.find((h) => h.id === activeTimer.habitId);
-    const targetSeconds = habit?.target_duration_seconds ?? 0;
-    const timerToSave = activeTimer;
-    const habitId = habit ? habit.id : timerToSave.habitId;
-    const activeDateKey = timerToSave.dateKey || formatDateKey(now);
 
-    // If duration > 0, optimistically update UI and stash session
-    if (finalSeconds > 0) {
-      const currentSessions = todaySessions[habitId] || [];
-      const sessionIndex = currentSessions.length + 1;
-      const optimisticSession: HabitSession = {
-        id: generateUUID(),
-        user_id: profile.id,
-        habit_id: habitId,
-        date: activeDateKey,
-        session_index: sessionIndex,
-        started_at: timerToSave.startedAt,
-        ended_at: endedIso,
-        duration_seconds: finalSeconds,
-        created_at: endedIso,
-      };
+    // 1. Instantly reset live timer to 00:00:00 (0ms UI feedback)
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    setActiveTimer(null);
+    setLiveElapsedSeconds(0);
 
-      const existingLog = todayLogs[habitId];
-      const newTotalDuration =
-        currentSessions.reduce((acc, s) => acc + s.duration_seconds, 0) + finalSeconds;
-      const isCompleted = targetSeconds > 0 && newTotalDuration >= targetSeconds;
-
-      const optimisticLog: HabitLog = {
-        id: existingLog?.id || generateUUID(),
-        user_id: profile.id,
-        habit_id: habitId,
-        date: activeDateKey,
-        is_completed: isCompleted,
-        target_duration_seconds: targetSeconds,
-        actual_duration_seconds: newTotalDuration,
-        completed_at: isCompleted ? (existingLog?.completed_at || endedIso) : null,
-        created_at: existingLog?.created_at || endedIso,
-        updated_at: endedIso,
-      };
-
-      // 1. Instant 0ms Optimistic UI update
-      setTodaySessions((prev) => ({
-        ...prev,
-        [habitId]: [...(prev[habitId] || []), optimisticSession],
-      }));
-      setTodayLogs((prev) => ({
-        ...prev,
-        [habitId]: optimisticLog,
-      }));
-
-      // 2. Durable stash in localStorage
-      stashPendingHabitSession(profile.id, optimisticSession, optimisticLog);
-
-      // 3. Clear active live timer state
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      setActiveTimer(null);
-      setLiveElapsedSeconds(0);
-
-      // 4. Background remote persistence to Supabase
-      recordHabitSession(
-        profile.id,
-        habitId,
-        activeDateKey,
-        timerToSave.startedAt,
-        endedIso,
-        finalSeconds,
-        targetSeconds
-      )
-        .then(() => {
-          // Refresh streaks in background
-          const currentHabit = habits.find((h) => h.id === habitId);
-          if (currentHabit) {
-            calculateHabitStreak(currentHabit, profile.id, now).then(({ currentStreak }) => {
-              setStreaksMap((prev) => ({ ...prev, [habitId]: currentStreak }));
-            });
-          }
-        })
-        .catch((err) => {
-          console.error('Failed to log habit session to Supabase, safely kept in pending queue:', err);
+    try {
+      // 2. Call server-side atomic stop function
+      const { session, log } = await stopHabitSession(profile.id, habitId, endedIso);
+      if (session) {
+        setTodaySessions((prev) => {
+          const prevList = prev[habitId] || [];
+          if (prevList.some((s) => s.id === session.id)) return prev;
+          return {
+            ...prev,
+            [habitId]: [...prevList, session],
+          };
         });
-    } else {
-      // 0 seconds elapsed: just reset timer
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      setActiveTimer(null);
-      setLiveElapsedSeconds(0);
+        if (log) {
+          setTodayLogs((prev) => ({
+            ...prev,
+            [habitId]: log,
+          }));
+        }
+
+        // Refresh streak in background
+        const currentHabit = habits.find((h) => h.id === habitId);
+        if (currentHabit) {
+          calculateHabitStreak(currentHabit, profile.id, now).then(({ currentStreak }) => {
+            setStreaksMap((prev) => ({ ...prev, [habitId]: currentStreak }));
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to stop habit session:', err);
     }
   };
 
@@ -659,128 +703,104 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
                     </span>
                   </div>
                 ) : (
-                  /* ── Timed Task UI with Start / Pause / Stop ── */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {/* Duration Progress Readout */}
-                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                        <span style={{ fontSize: 20, fontWeight: 800, color: isTargetReached ? '#2D6A4F' : '#1F2937' }}>
-                          {formatDuration(displayedActualDuration)}
-                        </span>
-                        <span style={{ fontSize: 13, color: '#6B7280', fontWeight: 600 }}>
-                          / {formatDuration(targetDuration)}
+                  /* ── Timed Task UI with Start / Pause / Stop & Today's Sessions ── */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Daily Progress & Goal Readout */}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#6B7280' }}>
+                            Today's Total:
+                          </span>
+                          <span style={{ fontSize: 17, fontWeight: 800, color: isTargetReached ? '#2D6A4F' : '#1F2937' }}>
+                            {formatDuration(loggedDuration)}
+                          </span>
+                          <span style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 600 }}>
+                            / {formatDuration(targetDuration)}
+                          </span>
+                        </div>
+
+                        <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>
+                          {sessions.length} session{sessions.length === 1 ? '' : 's'} completed
                         </span>
                       </div>
 
-                      {sessions.length > 0 && (
-                        <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>
-                          {sessions.length} session{sessions.length > 1 ? 's' : ''} logged
-                        </span>
-                      )}
+                      {/* Progress Fill Bar */}
+                      <div style={{ height: 6, backgroundColor: '#F3F4F6', borderRadius: 3, overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${Math.min(100, targetDuration > 0 ? (loggedDuration / targetDuration) * 100 : 0)}%`,
+                            backgroundColor: isTargetReached ? '#2D6A4F' : '#5C8D89',
+                            borderRadius: 3,
+                            transition: 'width 250ms ease',
+                          }}
+                        />
+                      </div>
                     </div>
 
-                    {/* Progress Fill Bar */}
-                    <div style={{ height: 6, backgroundColor: '#F3F4F6', borderRadius: 3, overflow: 'hidden' }}>
+                    {/* ── Active Session Timer Display & Controls ── */}
+                    <div
+                      style={{
+                        backgroundColor: '#FAFAF8',
+                        border: isThisTimerActive
+                          ? (activeTimer?.status === 'running' ? '1.5px solid #5C8D89' : '1.5px solid #F59E0B')
+                          : '1px solid #EAEAEA',
+                        borderRadius: 14,
+                        padding: '16px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 10,
+                        transition: 'border-color 200ms ease',
+                      }}
+                    >
+                      {/* Subtitle / Status */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {isThisTimerActive ? (
+                          activeTimer?.status === 'running' ? (
+                            <span style={{ fontSize: 11, fontWeight: 750, color: '#5C8D89', letterSpacing: '0.04em' }}>
+                              ● SESSION IN PROGRESS
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, fontWeight: 750, color: '#D97706', letterSpacing: '0.04em' }}>
+                              ⏸ SESSION PAUSED
+                            </span>
+                          )
+                        ) : (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em' }}>
+                            LIVE SESSION TIMER
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 00:00:00 Large Clock Display (tabular-nums) */}
                       <div
                         style={{
-                          height: '100%',
-                          width: `${Math.min(100, targetDuration > 0 ? (displayedActualDuration / targetDuration) * 100 : 0)}%`,
-                          backgroundColor: isTargetReached ? '#2D6A4F' : '#5C8D89',
-                          borderRadius: 3,
-                          transition: 'width 250ms ease',
+                          fontSize: 34,
+                          fontWeight: 800,
+                          color: isThisTimerActive ? '#1F2937' : '#4B5563',
+                          fontVariantNumeric: 'tabular-nums',
+                          letterSpacing: '0.04em',
+                          lineHeight: 1,
                         }}
-                      />
-                    </div>
+                      >
+                        {formatTimerClock(currentLiveSessionSeconds)}
+                      </div>
 
-                    {/* Timer Controls (Section 11) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                      {!isThisTimerActive ? (
-                        /* Idle State: Start Button */
-                        <button
-                          type="button"
-                          onClick={() => handleStartTimer(habit.id)}
-                          style={{
-                            flex: 1,
-                            padding: '11px 16px',
-                            borderRadius: 14,
-                            border: 'none',
-                            backgroundColor: '#5C8D89',
-                            color: '#FFFFFF',
-                            fontSize: 13,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 6,
-                            boxShadow: '0 4px 14px rgba(92, 141, 137, 0.25)',
-                            transition: 'all 150ms ease',
-                          }}
-                        >
-                          <span>▶</span>
-                          <span>Start Timer</span>
-                        </button>
-                      ) : (
-                        /* Active State: Pause/Resume + Red Stop Button */
-                        <>
-                          {activeTimer.status === 'running' ? (
-                            <button
-                              type="button"
-                              onClick={handlePauseTimer}
-                              style={{
-                                flex: 1,
-                                padding: '11px 14px',
-                                borderRadius: 14,
-                                border: '1.5px solid #D1D5DB',
-                                backgroundColor: '#FFFFFF',
-                                color: '#1F2937',
-                                fontSize: 13,
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 6,
-                              }}
-                            >
-                              <span>⏸</span>
-                              <span>Pause ({formatDuration(currentLiveSessionSeconds)})</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={handleResumeTimer}
-                              style={{
-                                flex: 1,
-                                padding: '11px 14px',
-                                borderRadius: 14,
-                                border: 'none',
-                                backgroundColor: '#5C8D89',
-                                color: '#FFFFFF',
-                                fontSize: 13,
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 6,
-                                boxShadow: '0 4px 14px rgba(92, 141, 137, 0.25)',
-                              }}
-                            >
-                              <span>▶</span>
-                              <span>Resume ({formatDuration(currentLiveSessionSeconds)})</span>
-                            </button>
-                          )}
-
-                          {/* Separate Red Stop Button */}
+                      {/* Timer Control Buttons */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', marginTop: 2 }}>
+                        {!isThisTimerActive ? (
+                          /* Idle State: Start Session Button */
                           <button
                             type="button"
-                            onClick={handleStopTimer}
+                            onClick={() => handleStartTimer(habit.id)}
                             style={{
-                              padding: '10px 18px',
+                              flex: 1,
+                              padding: '11px 16px',
                               borderRadius: 12,
                               border: 'none',
-                              backgroundColor: '#DC2626',
+                              backgroundColor: '#5C8D89',
                               color: '#FFFFFF',
                               fontSize: 13,
                               fontWeight: 700,
@@ -789,13 +809,171 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
                               alignItems: 'center',
                               justifyContent: 'center',
                               gap: 6,
-                              boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)',
+                              boxShadow: '0 4px 14px rgba(92, 141, 137, 0.25)',
+                              transition: 'all 150ms ease',
                             }}
                           >
-                            <span>⏹</span>
-                            <span>Stop</span>
+                            <span>▶</span>
+                            <span>Start Session</span>
                           </button>
-                        </>
+                        ) : (
+                          /* Active State: Pause/Resume + Red Stop Button */
+                          <>
+                            {activeTimer?.status === 'running' ? (
+                              <button
+                                type="button"
+                                onClick={handlePauseTimer}
+                                style={{
+                                  flex: 1,
+                                  padding: '11px 14px',
+                                  borderRadius: 12,
+                                  border: '1.5px solid #D1D5DB',
+                                  backgroundColor: '#FFFFFF',
+                                  color: '#1F2937',
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 6,
+                                  transition: 'all 150ms ease',
+                                }}
+                              >
+                                <span>⏸</span>
+                                <span>Pause</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleResumeTimer}
+                                style={{
+                                  flex: 1,
+                                  padding: '11px 14px',
+                                  borderRadius: 12,
+                                  border: 'none',
+                                  backgroundColor: '#5C8D89',
+                                  color: '#FFFFFF',
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 6,
+                                  boxShadow: '0 4px 14px rgba(92, 141, 137, 0.25)',
+                                  transition: 'all 150ms ease',
+                                }}
+                              >
+                                <span>▶</span>
+                                <span>Resume</span>
+                              </button>
+                            )}
+
+                            {/* Separate Red Stop Button */}
+                            <button
+                              type="button"
+                              onClick={handleStopTimer}
+                              style={{
+                                padding: '11px 20px',
+                                borderRadius: 12,
+                                border: 'none',
+                                backgroundColor: '#DC2626',
+                                color: '#FFFFFF',
+                                fontSize: 13,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 6,
+                                boxShadow: '0 2px 6px rgba(220, 38, 38, 0.25)',
+                                transition: 'all 150ms ease',
+                              }}
+                            >
+                              <span>⏹</span>
+                              <span>Stop</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Today's Logged Sessions List (Below Timer) ── */}
+                    <div style={{ marginTop: 2 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 750, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                          Today's Sessions
+                        </span>
+                        {sessions.length > 0 && (
+                          <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600 }}>
+                            {sessions.length} recorded
+                          </span>
+                        )}
+                      </div>
+
+                      {sessions.length === 0 ? (
+                        <div
+                          style={{
+                            padding: '10px 12px',
+                            backgroundColor: '#FAFAF8',
+                            borderRadius: 10,
+                            border: '1px dashed #E5E7EB',
+                            textAlign: 'center',
+                            color: '#9CA3AF',
+                            fontSize: 12,
+                          }}
+                        >
+                          No completed sessions today yet. Start the timer above to log a session.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {sessions.map((s, idx) => (
+                            <div
+                              key={s.id || idx}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '8px 12px',
+                                backgroundColor: '#FAFAF8',
+                                borderRadius: 10,
+                                border: '1px solid #EBEBEA',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 750,
+                                    color: '#5C8D89',
+                                    backgroundColor: '#E6F0EE',
+                                    padding: '2px 7px',
+                                    borderRadius: 6,
+                                  }}
+                                >
+                                  {getOrdinal(s.session_index || idx + 1)} log
+                                </span>
+                                {s.started_at && s.ended_at && (
+                                  <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 500 }}>
+                                    {formatTimeAmPm(s.started_at)} – {formatTimeAmPm(s.ended_at)}
+                                  </span>
+                                )}
+                              </div>
+
+                              <span
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 750,
+                                  color: '#1F2937',
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}
+                              >
+                                {formatDurationShort(s.duration_seconds)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>

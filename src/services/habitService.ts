@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Habit, HabitType, HabitSession, HabitLog } from '../types/database.types';
+import { Habit, HabitType, HabitSession, HabitLog, ActiveHabitSession } from '../types/database.types';
 import { formatDateKey } from './streakService';
 
 const LOCAL_STORAGE_PREFIX = 'FITBEE_HABIT_STORE_';
@@ -537,6 +537,202 @@ export async function recordHabitSession(
   }
 
   return { session: newSession, log: updatedLog };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Active Habit Sessions (Cross-Device Realtime Timers)
+// ─────────────────────────────────────────────────────────────
+
+export async function fetchActiveHabitSession(
+  userId: string,
+  habitId: string
+): Promise<ActiveHabitSession | null> {
+  try {
+    const { data, error } = await supabase
+      .from('active_habit_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('habit_id', habitId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return data as ActiveHabitSession;
+    }
+  } catch (err) {
+    console.warn('Error fetching active habit session:', err);
+  }
+  return null;
+}
+
+export async function fetchAllActiveHabitSessions(
+  userId: string
+): Promise<ActiveHabitSession[]> {
+  try {
+    const { data, error } = await supabase
+      .from('active_habit_sessions')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (!error && data) {
+      return data as ActiveHabitSession[];
+    }
+  } catch (err) {
+    console.warn('Error fetching all active habit sessions:', err);
+  }
+  return [];
+}
+
+export async function startHabitSession(
+  userId: string,
+  habitId: string,
+  dateStr: string,
+  startedAtIso?: string
+): Promise<ActiveHabitSession> {
+  const nowIso = startedAtIso || new Date().toISOString();
+  const sessionRow = {
+    user_id: userId,
+    habit_id: habitId,
+    date: dateStr,
+    status: 'RUNNING' as const,
+    started_at: nowIso,
+    accumulated_seconds: 0,
+    last_resumed_at: nowIso,
+    updated_at: nowIso,
+  };
+
+  const { data, error } = await supabase
+    .from('active_habit_sessions')
+    .upsert(sessionRow, { onConflict: 'user_id,habit_id' })
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error starting active habit session:', error);
+    throw error;
+  }
+  return data as ActiveHabitSession;
+}
+
+export async function pauseHabitSession(
+  userId: string,
+  habitId: string
+): Promise<ActiveHabitSession | null> {
+  const { data: current, error: fetchErr } = await supabase
+    .from('active_habit_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('habit_id', habitId)
+    .maybeSingle();
+
+  if (fetchErr || !current) return null;
+  if (current.status === 'PAUSED') return current as ActiveHabitSession;
+
+  let delta = 0;
+  if (current.last_resumed_at) {
+    const lastResumedMs = new Date(current.last_resumed_at).getTime();
+    delta = Math.max(0, Math.floor((Date.now() - lastResumedMs) / 1000));
+  }
+  const newAccumulated = (current.accumulated_seconds || 0) + delta;
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('active_habit_sessions')
+    .update({
+      status: 'PAUSED',
+      accumulated_seconds: newAccumulated,
+      last_resumed_at: null,
+      updated_at: nowIso,
+    })
+    .eq('id', current.id)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error pausing active habit session:', error);
+    throw error;
+  }
+  return data as ActiveHabitSession;
+}
+
+export async function resumeHabitSession(
+  userId: string,
+  habitId: string
+): Promise<ActiveHabitSession | null> {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('active_habit_sessions')
+    .update({
+      status: 'RUNNING',
+      last_resumed_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('user_id', userId)
+    .eq('habit_id', habitId)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error resuming active habit session:', error);
+    throw error;
+  }
+  return data as ActiveHabitSession;
+}
+
+export async function stopHabitSession(
+  userId: string,
+  habitId: string,
+  endedAtIso?: string
+): Promise<{ session: HabitSession | null; log: HabitLog | null }> {
+  const endedIso = endedAtIso || new Date().toISOString();
+
+  try {
+    // 1. Call atomic server function stop_active_habit_session
+    const { data, error } = await supabase.rpc('stop_active_habit_session', {
+      p_user_id: userId,
+      p_habit_id: habitId,
+      p_ended_at: endedIso,
+    });
+
+    if (error) {
+      console.error('Error in stop_active_habit_session RPC:', error);
+      throw error;
+    }
+
+    if (data && data.success) {
+      const session = (data.session as HabitSession) || null;
+      const log = (data.log as HabitLog) || null;
+
+      if (session) {
+        const local = getLocalStore(userId);
+        if (!local.sessions.some((s) => s.id === session.id)) {
+          local.sessions.push(session);
+        }
+        if (log) {
+          const logIdx = local.logs.findIndex((l) => l.habit_id === habitId && l.date === log.date);
+          if (logIdx !== -1) {
+            local.logs[logIdx] = log;
+          } else {
+            local.logs.push(log);
+          }
+        }
+        saveLocalStore(userId, local);
+      }
+
+      return { session, log };
+    }
+  } catch (err) {
+    console.warn('RPC stop_active_habit_session failed, using fallback:', err);
+    // Offline/network fallback: try to clean up active session and record locally
+    try {
+      await supabase
+        .from('active_habit_sessions')
+        .delete()
+        .eq('user_id', userId)
+        .eq('habit_id', habitId);
+    } catch (_) {}
+  }
+
+  return { session: null, log: null };
 }
 
 // ─────────────────────────────────────────────────────────────

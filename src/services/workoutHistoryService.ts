@@ -451,8 +451,10 @@ export async function fetchUserPlannedScheduleForDate(
 export async function fetchWorkoutLogsForRange(
   userId: string,
   startDateStr: string,
-  endDateStr: string
+  endDateStr: string,
+  client?: any
 ): Promise<any[]> {
+  const db = client || supabase;
   try {
     // Buffer query range by 1 day on either side to safely encompass all timezones
     const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
@@ -463,7 +465,7 @@ export async function fetchWorkoutLogsForRange(
     const paddedEnd = new Date(eYear, eMonth - 1, eDay + 1);
     const paddedEndStr = formatDateKey(paddedEnd);
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('workout_logs')
       .select(`
         *,
@@ -488,7 +490,7 @@ export async function fetchWorkoutLogsForRange(
     }
 
     // Filter in memory using local calendar date so timezone offsets never clip records
-    return (data || []).filter((log) => {
+    return ((data || []) as any[]).filter((log: any) => {
       if (!log.start_time) return false;
       const logLocalDate = formatDateKey(new Date(log.start_time));
       return logLocalDate >= startDateStr && logLocalDate <= endDateStr;

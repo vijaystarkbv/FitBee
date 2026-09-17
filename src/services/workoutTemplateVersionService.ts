@@ -23,10 +23,11 @@ function saveLocalTemplateVersions(userId: string, versions: WorkoutTemplateVers
 /**
  * Fetch all historical workout template versions for a user.
  */
-export async function getUserTemplateVersions(userId: string): Promise<WorkoutTemplateVersion[]> {
+export async function getUserTemplateVersions(userId: string, client?: any): Promise<WorkoutTemplateVersion[]> {
   if (!userId) return [];
+  const db = client || supabase;
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('workout_template_versions')
       .select('*')
       .eq('user_id', userId)

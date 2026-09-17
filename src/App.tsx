@@ -253,7 +253,7 @@ export const App: React.FC = () => {
     }
 
     // Save to DB via nutritionService
-    const createdMeal = await saveMealEntry(log.id, rawText, foods, totals);
+    const createdMeal = await saveMealEntry(log.id, rawText, foods, totals, session.user.id);
 
     // 1. Instantly update today's nutrition totals in memory for Home Dashboard progress rings
     setTodayNutrition((prev) => {

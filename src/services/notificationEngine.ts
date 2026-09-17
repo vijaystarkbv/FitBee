@@ -227,8 +227,11 @@ export async function calculateRawDailyState(
   localDate: string,
   _weekdayName?: string,
   profile?: Profile | null,
-  _timezone: string = 'UTC'
+  _timezone: string = 'UTC',
+  client?: any
 ): Promise<RawCategoryState> {
+  const db = client || supabase;
+
   // ─────────────────────────────────────────────────────────────
   // 1. HABITS
   // ─────────────────────────────────────────────────────────────
@@ -237,32 +240,33 @@ export async function calculateRawDailyState(
   let completedHabits = 0;
 
   try {
-    const { data: habits } = await supabase
+    const { data: habits } = await db
       .from('habits')
-      .select('id, is_active')
+      .select('id, is_active, notifications_enabled')
       .eq('user_id', userId)
       .eq('is_active', true);
 
-    const activeHabits = habits || [];
-    totalHabits = activeHabits.length;
+    // Only habits where notifications_enabled is explicitly true trigger reminders
+    const notifHabits = (habits || []).filter((h: any) => Boolean(h.notifications_enabled));
+    totalHabits = notifHabits.length;
 
     if (totalHabits > 0) {
-      const { data: logs } = await supabase
+      const { data: logs } = await db
         .from('habit_logs')
         .select('habit_id, is_completed')
         .eq('user_id', userId)
         .eq('date', localDate);
 
       const completedSet = new Set<string>();
-      (logs || []).forEach((l) => {
+      (logs || []).forEach((l: any) => {
         if (l.is_completed) completedSet.add(l.habit_id);
       });
 
-      completedHabits = completedSet.size;
-      // Pending if any active habit is not completed today
+      completedHabits = notifHabits.filter((h: any) => completedSet.has(h.id)).length;
+      // Pending if any active habit with notifications enabled is not completed today
       habitPending = completedHabits < totalHabits;
     } else {
-      // User has no active habits at all -> never send habit notification
+      // User has no active habits with notifications enabled -> never send habit notification
       habitPending = false;
     }
   } catch (err) {
@@ -278,7 +282,7 @@ export async function calculateRawDailyState(
   let currentCalories = 0;
 
   try {
-    const { data: nutLog } = await supabase
+    const { data: nutLog } = await db
       .from('nutrition_logs')
       .select('*')
       .eq('user_id', userId)
@@ -293,7 +297,7 @@ export async function calculateRawDailyState(
         // Fetch walking burn for net calorie evaluation
         let walkingBurn = 0;
         try {
-          const { data: walkLog } = await supabase
+          const { data: walkLog } = await db
             .from('daily_walking_logs')
             .select('calories_burned')
             .eq('user_id', userId)
@@ -338,12 +342,12 @@ export async function calculateRawDailyState(
   let isCompletedToday = false;
 
   try {
-    const versions = await getUserTemplateVersions(userId);
+    const versions = await getUserTemplateVersions(userId, db);
     const [y, m, dayNum] = localDate.split('-').map(Number);
     const targetDate = new Date(y, m - 1, dayNum);
     const activeVersion = getActiveTemplateVersionForDateSync(userId, targetDate, versions);
 
-    const workoutLogs = await fetchWorkoutLogsForRange(userId, localDate, localDate);
+    const workoutLogs = await fetchWorkoutLogsForRange(userId, localDate, localDate, db);
     const completion = calculateWorkoutDayCompletion(targetDate, activeVersion, workoutLogs, true);
 
     isScheduledToday = completion.isScheduled;
@@ -413,10 +417,13 @@ export async function evaluateNotificationDecision(
   userId: string,
   slotOverride?: EvaluationSlot | string,
   profileOverride?: Profile | null,
-  recentMessageIds: string[] = []
+  recentMessageIds: string[] = [],
+  client?: any
 ): Promise<NotificationEvaluationResult> {
+  const db = client || supabase;
+
   // 1. Fetch user notification settings
-  const { data: settingsRow } = await supabase
+  const { data: settingsRow } = await db
     .from('user_settings')
     .select('*')
     .eq('user_id', userId)
@@ -459,12 +466,12 @@ export async function evaluateNotificationDecision(
   // 3. Fetch profile if not provided
   let profile = profileOverride;
   if (!profile) {
-    const { data: prof } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+    const { data: prof } = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
     profile = prof;
   }
 
   // 4. Calculate raw daily state from database
-  const rawState = await calculateRawDailyState(userId, timeInfo.localDate, timeInfo.weekdayName, profile, settings.timezone);
+  const rawState = await calculateRawDailyState(userId, timeInfo.localDate, timeInfo.weekdayName, profile, settings.timezone, db);
 
   // 5. Apply user preferences
   const habitActive = rawState.habitPending && settings.habit_notifications_enabled;
@@ -494,7 +501,7 @@ export async function evaluateNotificationDecision(
   }
 
   // 7. Check server-side daily cap (Hard Maximum 5 per account per local calendar day)
-  const { count: dailyCount } = await supabase
+  const { count: dailyCount } = await db
     .from('notification_logs')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
@@ -515,7 +522,7 @@ export async function evaluateNotificationDecision(
   }
 
   // 8. Check duplicate for same slot today
-  const { data: existingSlotLog } = await supabase
+  const { data: existingSlotLog } = await db
     .from('notification_logs')
     .select('id')
     .eq('user_id', userId)
