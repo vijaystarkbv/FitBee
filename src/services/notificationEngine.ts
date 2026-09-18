@@ -232,8 +232,31 @@ export async function calculateRawDailyState(
 ): Promise<RawCategoryState> {
   const db = client || supabase;
 
+  // 0. Attempt atomic, RLS-unblocked RPC check (authoritative server-side evaluation)
+  try {
+    const weekday = _weekdayName || new Date(localDate + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long' });
+    const { data: rawRpc, error: rpcErr } = await db.rpc('get_user_notification_raw_state', {
+      p_user_id: userId,
+      p_local_date: localDate,
+      p_weekday: weekday,
+    });
+
+    if (!rpcErr && rawRpc) {
+      return {
+        habitPending: Boolean(rawRpc.habitPending),
+        foodPending: Boolean(rawRpc.foodPending),
+        workoutPending: Boolean(rawRpc.workoutPending),
+        habitDetails: rawRpc.habitDetails || { totalHabits: 0, completedHabits: 0, incompleteHabits: 0 },
+        workoutDetails: rawRpc.workoutDetails || { isScheduledToday: false, isCompletedToday: false },
+        foodDetails: rawRpc.foodDetails || { isLoggedToday: false, isTargetsMet: false, currentCalories: 0 },
+      };
+    }
+  } catch (err) {
+    console.warn('RPC get_user_notification_raw_state failed, using table fallback:', err);
+  }
+
   // ─────────────────────────────────────────────────────────────
-  // 1. HABITS
+  // 1. HABITS (Fallback)
   // ─────────────────────────────────────────────────────────────
   let habitPending = false;
   let totalHabits = 0;

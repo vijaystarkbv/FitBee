@@ -681,55 +681,49 @@ export async function resumeHabitSession(
 export async function stopHabitSession(
   userId: string,
   habitId: string,
-  endedAtIso?: string
+  endedAtIso?: string,
+  activeSessionId?: string
 ): Promise<{ session: HabitSession | null; log: HabitLog | null }> {
   const endedIso = endedAtIso || new Date().toISOString();
 
-  try {
-    // 1. Call atomic server function stop_active_habit_session
-    const { data, error } = await supabase.rpc('stop_active_habit_session', {
-      p_user_id: userId,
-      p_habit_id: habitId,
-      p_ended_at: endedIso,
-    });
+  // 1. Call atomic server function stop_active_habit_session with active session id for idempotency
+  const { data, error } = await supabase.rpc('stop_active_habit_session', {
+    p_user_id: userId,
+    p_habit_id: habitId,
+    p_ended_at: endedIso,
+    p_active_session_id: activeSessionId || null,
+  });
 
-    if (error) {
-      console.error('Error in stop_active_habit_session RPC:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('Error in stop_active_habit_session RPC:', error);
+    throw error;
+  }
 
-    if (data && data.success) {
-      const session = (data.session as HabitSession) || null;
-      const log = (data.log as HabitLog) || null;
+  if (data && data.success) {
+    const session = (data.session as HabitSession) || null;
+    const log = (data.log as HabitLog) || null;
 
-      if (session) {
-        const local = getLocalStore(userId);
-        if (!local.sessions.some((s) => s.id === session.id)) {
-          local.sessions.push(session);
-        }
-        if (log) {
-          const logIdx = local.logs.findIndex((l) => l.habit_id === habitId && l.date === log.date);
-          if (logIdx !== -1) {
-            local.logs[logIdx] = log;
-          } else {
-            local.logs.push(log);
-          }
-        }
-        saveLocalStore(userId, local);
+    if (session) {
+      const local = getLocalStore(userId);
+      const existingIdx = local.sessions.findIndex((s) => s.id === session.id);
+      if (existingIdx !== -1) {
+        local.sessions[existingIdx] = session;
+      } else {
+        local.sessions.push(session);
       }
 
-      return { session, log };
+      if (log) {
+        const logIdx = local.logs.findIndex((l) => l.habit_id === habitId && l.date === log.date);
+        if (logIdx !== -1) {
+          local.logs[logIdx] = log;
+        } else {
+          local.logs.push(log);
+        }
+      }
+      saveLocalStore(userId, local);
     }
-  } catch (err) {
-    console.warn('RPC stop_active_habit_session failed, using fallback:', err);
-    // Offline/network fallback: try to clean up active session and record locally
-    try {
-      await supabase
-        .from('active_habit_sessions')
-        .delete()
-        .eq('user_id', userId)
-        .eq('habit_id', habitId);
-    } catch (_) {}
+
+    return { session, log };
   }
 
   return { session: null, log: null };

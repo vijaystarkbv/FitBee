@@ -51,6 +51,7 @@ interface ActiveTimerState {
   accumulatedSeconds: number; // Seconds prior to current unpaused interval
   lastTickTimestamp: number; // ms timestamp of last resume
   dateKey: string; // YYYY-MM-DD
+  activeSessionId?: string; // Authoritative DB UUID from active_habit_sessions
 }
 
 const TIMER_STORAGE_KEY_PREFIX = 'fitbee_active_habit_timer_';
@@ -113,6 +114,8 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
   const [liveElapsedSeconds, setLiveElapsedSeconds] = useState<number>(() =>
     calculateCurrentElapsed(getStoredTimer(profile.id, todayKey))
   );
+  const [isStoppingHabitId, setIsStoppingHabitId] = useState<string | null>(null);
+  const [stopError, setStopError] = useState<string | null>(null);
 
   const setActiveTimer = (timer: ActiveTimerState | null) => {
     setActiveTimerState(timer);
@@ -165,6 +168,7 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
           accumulatedSeconds: currentActive.accumulated_seconds || 0,
           lastTickTimestamp: currentActive.last_resumed_at ? new Date(currentActive.last_resumed_at).getTime() : Date.now(),
           dateKey: currentActive.date,
+          activeSessionId: currentActive.id,
         };
         setActiveTimer(timerState);
         setLiveElapsedSeconds(calculateCurrentElapsed(timerState));
@@ -187,6 +191,7 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
   useEffect(() => {
     const handleHabitsSync = () => {
       loadAllData();
+      loadActiveTimer();
       flushPendingHabitSessions(profile.id);
     };
 
@@ -207,6 +212,7 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
             accumulatedSeconds: row.accumulated_seconds || 0,
             lastTickTimestamp: row.last_resumed_at ? new Date(row.last_resumed_at).getTime() : Date.now(),
             dateKey: row.date,
+            activeSessionId: row.id,
           };
           setActiveTimer(timerState);
           setLiveElapsedSeconds(calculateCurrentElapsed(timerState));
@@ -289,7 +295,8 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
       await handleStopTimer();
     }
 
-    const startedIso = now.toISOString();
+    // Always generate fresh ISO timestamp when Start is clicked (prevents stale memoized timestamps)
+    const startedIso = new Date().toISOString();
     const newTimer: ActiveTimerState = {
       habitId,
       status: 'running',
@@ -300,9 +307,16 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
     };
     setActiveTimer(newTimer);
     setLiveElapsedSeconds(0);
+    setStopError(null);
 
     try {
-      await startHabitSession(profile.id, habitId, todayKey, startedIso);
+      const persisted = await startHabitSession(profile.id, habitId, todayKey, startedIso);
+      if (persisted?.id) {
+        setActiveTimer({
+          ...newTimer,
+          activeSessionId: persisted.id,
+        });
+      }
     } catch (err) {
       console.warn('Failed to persist start session to Supabase:', err);
     }
@@ -348,20 +362,29 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
   };
 
   const handleStopTimer = async () => {
-    if (!activeTimer) return;
+    if (!activeTimer || isStoppingHabitId) return;
 
     const timerToStop = activeTimer;
     const habitId = timerToStop.habitId;
     const endedIso = new Date().toISOString();
 
-    // 1. Instantly reset live timer to 00:00:00 (0ms UI feedback)
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    setActiveTimer(null);
-    setLiveElapsedSeconds(0);
+    setIsStoppingHabitId(habitId);
+    setStopError(null);
 
     try {
-      // 2. Call server-side atomic stop function
-      const { session, log } = await stopHabitSession(profile.id, habitId, endedIso);
+      // Pass activeSessionId to guarantee database-level 1:1 idempotent stop
+      const { session, log } = await stopHabitSession(
+        profile.id,
+        habitId,
+        endedIso,
+        timerToStop.activeSessionId
+      );
+
+      // Only reset timer once server persistence is confirmed!
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      setActiveTimer(null);
+      setLiveElapsedSeconds(0);
+
       if (session) {
         setTodaySessions((prev) => {
           const prevList = prev[habitId] || [];
@@ -386,8 +409,12 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
           });
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to stop habit session:', err);
+      // PRESERVE TIMER STATE ON FAILURE so user never loses their tracked time!
+      setStopError('Could not save session. Your active timer was preserved. Please tap Stop again.');
+    } finally {
+      setIsStoppingHabitId(null);
     }
   };
 
@@ -874,29 +901,50 @@ export const DailyHitlistPage: React.FC<DailyHitlistPageProps> = ({ profile, onB
                             <button
                               type="button"
                               onClick={handleStopTimer}
+                              disabled={isStoppingHabitId === habit.id}
                               style={{
                                 padding: '11px 20px',
                                 borderRadius: 12,
                                 border: 'none',
-                                backgroundColor: '#DC2626',
+                                backgroundColor: isStoppingHabitId === habit.id ? '#9CA3AF' : '#DC2626',
                                 color: '#FFFFFF',
                                 fontSize: 13,
                                 fontWeight: 700,
-                                cursor: 'pointer',
+                                cursor: isStoppingHabitId === habit.id ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: 6,
-                                boxShadow: '0 2px 6px rgba(220, 38, 38, 0.25)',
+                                boxShadow: isStoppingHabitId === habit.id ? 'none' : '0 2px 6px rgba(220, 38, 38, 0.25)',
                                 transition: 'all 150ms ease',
+                                opacity: isStoppingHabitId === habit.id ? 0.7 : 1,
                               }}
                             >
-                              <span>⏹</span>
-                              <span>Stop</span>
+                              <span>{isStoppingHabitId === habit.id ? '⏳' : '⏹'}</span>
+                              <span>{isStoppingHabitId === habit.id ? 'Saving...' : 'Stop'}</span>
                             </button>
                           </>
                         )}
                       </div>
+
+                      {/* Preserved Timer Error Notice if Stop fails */}
+                      {isThisTimerActive && stopError && (
+                        <div
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            backgroundColor: '#FEF2F2',
+                            border: '1px solid #FCA5A5',
+                            borderRadius: 8,
+                            color: '#991B1B',
+                            fontSize: 12,
+                            fontWeight: 500,
+                            textAlign: 'center',
+                          }}
+                        >
+                          {stopError}
+                        </div>
+                      )}
                     </div>
 
                     {/* ── Today's Logged Sessions List (Below Timer) ── */}
